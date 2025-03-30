@@ -9,13 +9,13 @@ import (
 type storage struct {
 	mu sync.RWMutex
 
-	currentBlockID        int64
+	currentBlockNumber    int64
 	addressesTransactions map[string][]blockwatch.Transaction
 }
 
 func New() *storage {
 	return &storage{
-		currentBlockID:        0,
+		currentBlockNumber:    0,
 		addressesTransactions: make(map[string][]blockwatch.Transaction),
 	}
 }
