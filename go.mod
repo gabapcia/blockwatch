@@ -1,3 +1,3 @@
-module github.com/gabapcia/eth-tx-tracker
+module github.com/gabapcia/blockwatch
 
 go 1.24
