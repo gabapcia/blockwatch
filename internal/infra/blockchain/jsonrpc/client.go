@@ -39,12 +39,23 @@ func (r response) Err() error {
 	return fmt.Errorf("%w: [%d] - %s", ErrProviderReturnedError, r.Error.Code, r.Error.Message)
 }
 
+// Client defines the interface for a generic JSON-RPC client.
+// It can be used to abstract the underlying implementation and facilitate mocking or testing.
+type Client interface {
+	// Fetch sends a JSON-RPC request with the given method name and parameters.
+	// It returns the raw JSON result or an error if the request or response fails.
+	Fetch(ctx context.Context, method string, params ...any) (json.RawMessage, error)
+}
+
 // client is a reusable JSON-RPC client over HTTP.
 // It handles encoding requests, sending them, decoding responses, and retry logic.
 type client struct {
 	providerEndpoint string       // The URL of the remote JSON-RPC server
 	httpClient       *http.Client // The HTTP client used to perform requests
 }
+
+// Compile-time assertion that client implements the Client interface.
+var _ Client = (*client)(nil)
 
 // Fetch sends a JSON-RPC request to the remote server with the given method and parameters.
 // It returns the raw result as a json.RawMessage or an error if the request or server fails.
