@@ -50,8 +50,8 @@ type Client interface {
 // client is a reusable JSON-RPC client over HTTP.
 // It handles encoding requests, sending them, decoding responses, and retry logic.
 type client struct {
-	providerEndpoint string       // The URL of the remote JSON-RPC server
-	httpClient       *http.Client // The HTTP client used to perform requests
+	providerEndpoint string                // The URL of the remote JSON-RPC server
+	httpClient       *retryablehttp.Client // The HTTP client used to perform requests
 }
 
 // Compile-time assertion that client implements the Client interface.
@@ -71,11 +71,10 @@ func (c *client) Fetch(ctx context.Context, method string, params ...any) (json.
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.providerEndpoint, bytes.NewReader(body))
+	req, err := retryablehttp.NewRequestWithContext(ctx, http.MethodPost, c.providerEndpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
-	defer req.Body.Close()
 
 	req.Header.Set("Content-Type", "application/json")
 
@@ -127,7 +126,7 @@ func NewClient(providerEndpoint string, opts ...Option) *client {
 
 	return &client{
 		providerEndpoint: providerEndpoint,
-		httpClient:       httpClient.StandardClient(),
+		httpClient:       httpClient,
 	}
 }
 
