@@ -120,21 +120,27 @@ func NewClient(providerEndpoint string, opts ...Option) *client {
 	}
 }
 
-// WithTimeout configures the maximum duration for a single request.
+// WithTimeout configures the maximum duration for a single HTTP request.
+//
+// Default: 5 seconds.
 func WithTimeout(d time.Duration) Option {
 	return func(c *config) {
 		c.timeout = d
 	}
 }
 
-// WithRetryWaitMin configures the minimum delay between retry attempts.
+// WithRetryWaitMin configures the minimum wait duration between retry attempts.
+//
+// Default: 1 second.
 func WithRetryWaitMin(d time.Duration) Option {
 	return func(c *config) {
 		c.retryWaitMin = d
 	}
 }
 
-// WithRetryWaitMax configures the maximum delay between retry attempts.
+// WithRetryWaitMax configures the maximum wait duration between retry attempts.
+//
+// Default: 5 seconds.
 func WithRetryWaitMax(d time.Duration) Option {
 	return func(c *config) {
 		c.retryWaitMax = d
@@ -142,6 +148,8 @@ func WithRetryWaitMax(d time.Duration) Option {
 }
 
 // WithRetryMax configures the maximum number of retry attempts for failed requests.
+//
+// Default: 2 retries.
 func WithRetryMax(n int) Option {
 	return func(c *config) {
 		c.retryMax = n
