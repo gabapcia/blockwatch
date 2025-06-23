@@ -140,6 +140,38 @@ func TestHex_UnmarshalJSON(t *testing.T) {
 	})
 }
 
+func TestHex_Add(t *testing.T) {
+	t.Run("add to valid hex", func(t *testing.T) {
+		h := Hex("0x0a") // 10
+		result := h.Add(5)
+		assert.Equal(t, Hex("0xf"), result) // 15
+	})
+
+	t.Run("add zero", func(t *testing.T) {
+		h := Hex("0x1f") // 31
+		result := h.Add(0)
+		assert.Equal(t, Hex("0x1f"), result)
+	})
+
+	t.Run("add negative", func(t *testing.T) {
+		h := Hex("0x0a") // 10
+		result := h.Add(-3)
+		assert.Equal(t, Hex("0x7"), result) // 7
+	})
+
+	t.Run("add to invalid hex should treat as 0", func(t *testing.T) {
+		h := Hex("0xZZ")
+		result := h.Add(8)
+		assert.Equal(t, Hex("0x8"), result)
+	})
+
+	t.Run("add resulting in zero", func(t *testing.T) {
+		h := Hex("0x05")
+		result := h.Add(-5)
+		assert.Equal(t, Hex("0x0"), result)
+	})
+}
+
 func TestHex_Int(t *testing.T) {
 	t.Run("0x0a should be 10", func(t *testing.T) {
 		var h Hex = "0x0a"

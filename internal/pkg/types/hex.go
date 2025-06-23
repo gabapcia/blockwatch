@@ -52,6 +52,14 @@ func (h *Hex) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// Add returns a new Hex representing the result of adding n to the current value.
+// If the original value is invalid, it treats it as zero.
+func (h Hex) Add(n int64) Hex {
+	current := h.Int()
+	sum := current + n
+	return Hex(fmt.Sprintf("0x%x", sum))
+}
+
 // Int returns the decoded int64 value from the hexadecimal string.
 // If parsing fails, it returns zero.
 func (h Hex) Int() int64 {
