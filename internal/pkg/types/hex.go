@@ -8,23 +8,44 @@ import (
 )
 
 // Hex represents a hexadecimal-encoded number as a string (e.g., "0x1a").
-// It implements JSON unmarshaling with validation and provides conversion to int64.
+// It provides validation, JSON marshaling/unmarshaling, and conversion to int64.
 type Hex string
 
+// HexFromString validates the input string and returns a Hex value if valid.
+func HexFromString(s string) (Hex, error) {
+	if err := validateHex(s); err != nil {
+		return "", err
+	}
+	return Hex(s), nil
+}
+
+// validateHex checks whether a string is a valid hexadecimal number starting with "0x" or "0X".
+func validateHex(s string) error {
+	if !strings.HasPrefix(s, "0x") && !strings.HasPrefix(s, "0X") {
+		return fmt.Errorf("hex string must start with 0x")
+	}
+
+	if _, err := strconv.ParseUint(s[2:], 16, 64); err != nil {
+		return fmt.Errorf("invalid hexadecimal value: %w", err)
+	}
+
+	return nil
+}
+
+// MarshalJSON encodes the Hex as a JSON string.
+func (h Hex) MarshalJSON() ([]byte, error) {
+	return json.Marshal(string(h))
+}
+
 // UnmarshalJSON parses and validates a JSON-encoded hexadecimal string.
-// It ensures the string starts with "0x" or "0X" and contains a valid hex number.
 func (h *Hex) UnmarshalJSON(data []byte) error {
 	var s string
 	if err := json.Unmarshal(data, &s); err != nil {
 		return fmt.Errorf("invalid hex string: %w", err)
 	}
 
-	if !strings.HasPrefix(s, "0x") && !strings.HasPrefix(s, "0X") {
-		return fmt.Errorf("hex string must start with 0x")
-	}
-
-	if _, err := strconv.ParseInt(s[2:], 16, 64); err != nil {
-		return fmt.Errorf("invalid hexadecimal value: %w", err)
+	if err := validateHex(s); err != nil {
+		return err
 	}
 
 	*h = Hex(s)
