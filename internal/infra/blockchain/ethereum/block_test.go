@@ -1,0 +1,295 @@
+package ethereum
+
+import (
+	"encoding/json"
+	"errors"
+	"testing"
+
+	"github.com/gabapcia/blockwatch/internal/pkg/transport/jsonrpc/jsonrpctest"
+	"github.com/gabapcia/blockwatch/internal/pkg/types"
+	"github.com/gabapcia/blockwatch/internal/watcher"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+)
+
+func TestTransactionResponse_toWatcherTransaction(t *testing.T) {
+	t.Run("converts TransactionResponse to watcher.Transaction", func(t *testing.T) {
+		tr := TransactionResponse{
+			Hash: "0xabc123",
+			From: "0xfrom",
+			To:   "0xto",
+		}
+
+		expected := watcher.Transaction{
+			Hash: "0xabc123",
+			From: "0xfrom",
+			To:   "0xto",
+		}
+
+		result := tr.toWatcherTransaction()
+		assert.Equal(t, expected, result, "converted transaction should match expected watcher.Transaction")
+	})
+}
+
+func TestBlockResponse_toWatcherBlock(t *testing.T) {
+	t.Run("converts BlockResponse to watcher.Block", func(t *testing.T) {
+		blockResp := BlockResponse{
+			Hash:   "0xblockhash",
+			Number: types.Hex("0x10"),
+			Transactions: []TransactionResponse{
+				{
+					Hash: "0x1", From: "0xA", To: "0xB",
+				},
+				{
+					Hash: "0x2", From: "0xC", To: "0xD",
+				},
+			},
+		}
+
+		expected := watcher.Block{
+			Hash:   "0xblockhash",
+			Number: types.Hex("0x10"),
+			Transactions: []watcher.Transaction{
+				{Hash: "0x1", From: "0xA", To: "0xB"},
+				{Hash: "0x2", From: "0xC", To: "0xD"},
+			},
+		}
+
+		result := blockResp.toWatcherBlock()
+		assert.Equal(t, expected, result, "converted block should match expected watcher.Block")
+	})
+}
+
+func TestClient_getLatestBlockNumber(t *testing.T) {
+	t.Run("returns latest block number successfully", func(t *testing.T) {
+		mockClient := new(jsonrpctest.MockClient)
+		raw := json.RawMessage(`"0x10"`)
+
+		mockClient.
+			On("Fetch", mock.Anything, "eth_blockNumber").
+			Return(raw, nil)
+
+		c := NewClient(mockClient)
+		result, err := c.getLatestBlockNumber(t.Context())
+
+		assert.NoError(t, err)
+		assert.Equal(t, types.Hex("0x10"), result)
+
+		mockClient.AssertExpectations(t)
+	})
+
+	t.Run("returns error when fetch fails", func(t *testing.T) {
+		mockClient := new(jsonrpctest.MockClient)
+
+		mockClient.
+			On("Fetch", mock.Anything, "eth_blockNumber").
+			Return(nil, errors.New("fetch error"))
+
+		c := NewClient(mockClient)
+		result, err := c.getLatestBlockNumber(t.Context())
+
+		assert.Error(t, err)
+		assert.Empty(t, result)
+
+		mockClient.AssertExpectations(t)
+	})
+
+	t.Run("returns error on invalid response", func(t *testing.T) {
+		mockClient := new(jsonrpctest.MockClient)
+		invalidJSON := json.RawMessage(`not-a-hex-string`)
+
+		mockClient.
+			On("Fetch", mock.Anything, "eth_blockNumber").
+			Return(invalidJSON, nil)
+
+		c := NewClient(mockClient)
+		result, err := c.getLatestBlockNumber(t.Context())
+
+		assert.Error(t, err)
+		assert.Empty(t, result)
+
+		mockClient.AssertExpectations(t)
+	})
+}
+
+func TestClient_getBlockByNumber(t *testing.T) {
+	t.Run("returns block successfully", func(t *testing.T) {
+		mockClient := new(jsonrpctest.MockClient)
+
+		mockJSON := json.RawMessage(`{
+			"hash": "0xabc",
+			"number": "0x10",
+			"transactions": [
+				{"hash": "0x1", "from": "0xA", "to": "0xB"}
+			],
+			"withdrawals": []
+		}`)
+
+		mockClient.
+			On("Fetch", mock.Anything, "eth_getBlockByNumber", []any{types.Hex("0x10"), true}).
+			Return(mockJSON, nil)
+
+		c := NewClient(mockClient)
+		block, err := c.getBlockByNumber(t.Context(), types.Hex("0x10"))
+
+		assert.NoError(t, err)
+		assert.Equal(t, types.Hex("0x10"), block.Number)
+		assert.Equal(t, "0xabc", block.Hash)
+		assert.Len(t, block.Transactions, 1)
+		assert.Equal(t, "0x1", block.Transactions[0].Hash)
+
+		mockClient.AssertExpectations(t)
+	})
+
+	t.Run("returns error when fetch fails", func(t *testing.T) {
+		mockClient := new(jsonrpctest.MockClient)
+
+		mockClient.
+			On("Fetch", mock.Anything, "eth_getBlockByNumber", []any{types.Hex("0x10"), true}).
+			Return(nil, errors.New("connection error"))
+
+		c := NewClient(mockClient)
+		block, err := c.getBlockByNumber(t.Context(), types.Hex("0x10"))
+
+		assert.Error(t, err)
+		assert.Empty(t, block)
+
+		mockClient.AssertExpectations(t)
+	})
+
+	t.Run("returns error on invalid json", func(t *testing.T) {
+		mockClient := new(jsonrpctest.MockClient)
+
+		mockJSON := json.RawMessage(`{ invalid-json`)
+
+		mockClient.
+			On("Fetch", mock.Anything, "eth_getBlockByNumber", []any{types.Hex("0x10"), true}).
+			Return(mockJSON, nil)
+
+		c := NewClient(mockClient)
+		block, err := c.getBlockByNumber(t.Context(), types.Hex("0x10"))
+
+		assert.Error(t, err)
+		assert.Empty(t, block)
+
+		mockClient.AssertExpectations(t)
+	})
+}
+
+func TestClient_pollNewBlocks(t *testing.T) {
+	t.Run("emits all blocks from fromBlockNumber up to latest, returns latest+1", func(t *testing.T) {
+		mockClient := new(jsonrpctest.MockClient)
+
+		// latest block: 0x13
+		mockClient.
+			On("Fetch", mock.Anything, "eth_blockNumber").
+			Return(json.RawMessage(`"0x13"`), nil)
+
+		for _, hex := range []string{"0x10", "0x11", "0x12", "0x13"} {
+			mockClient.
+				On("Fetch", mock.Anything, "eth_getBlockByNumber", []any{types.Hex(hex), true}).
+				Return(json.RawMessage(`{
+					"hash": "0xabc`+hex+`",
+					"number": "`+hex+`",
+					"transactions": [],
+					"withdrawals": []
+				}`), nil)
+		}
+
+		c := NewClient(mockClient)
+		events := make(chan watcher.BlockchainEvent, 10)
+
+		next := c.pollNewBlocks(t.Context(), types.Hex("0x10"), events)
+		assert.Equal(t, types.Hex("0x14"), next, "next block number should be latest + 1 (0x14)")
+
+		close(events)
+		var count int
+		for ev := range events {
+			assert.NoError(t, ev.Error, "event error should be nil")
+			expected := types.Hex("0x10").Add(int64(count))
+			assert.Equal(t, expected, ev.NewBlock.Number, "block number mismatch at index %d", count)
+			count++
+		}
+		assert.Equal(t, 4, count, "number of emitted blocks should be 4")
+		mockClient.AssertExpectations(t)
+	})
+
+	t.Run("returns immediately when fromBlockNumber >= latestBlockNumber", func(t *testing.T) {
+		mockClient := new(jsonrpctest.MockClient)
+
+		mockClient.
+			On("Fetch", mock.Anything, "eth_blockNumber").
+			Return(json.RawMessage(`"0x20"`), nil)
+
+		c := NewClient(mockClient)
+		events := make(chan watcher.BlockchainEvent, 1)
+
+		next := c.pollNewBlocks(t.Context(), types.Hex("0x20"), events)
+		assert.Equal(t, types.Hex("0x20"), next, "next block number should be unchanged when no new blocks")
+
+		close(events)
+		assert.Empty(t, events, "no events should be emitted when from >= latest")
+		mockClient.AssertExpectations(t)
+	})
+
+	t.Run("returns same block number and emits error when latest block fetch fails", func(t *testing.T) {
+		mockClient := new(jsonrpctest.MockClient)
+
+		expectedErr := errors.New("rpc error")
+		mockClient.
+			On("Fetch", mock.Anything, "eth_blockNumber").
+			Return(nil, expectedErr)
+
+		c := NewClient(mockClient)
+		events := make(chan watcher.BlockchainEvent, 1)
+
+		next := c.pollNewBlocks(t.Context(), types.Hex("0x5"), events)
+		assert.Equal(t, types.Hex("0x5"), next, "should return fromBlockNumber unchanged on failure")
+
+		close(events)
+		ev := <-events
+		assert.Empty(t, ev.NewBlock.Hash, "no block should be present when latest fetch fails")
+		assert.ErrorIs(t, ev.Error, expectedErr, "event should contain the fetch error")
+		mockClient.AssertExpectations(t)
+	})
+
+	t.Run("emits partial success and error for failing block", func(t *testing.T) {
+		mockClient := new(jsonrpctest.MockClient)
+
+		mockClient.
+			On("Fetch", mock.Anything, "eth_blockNumber").
+			Return(json.RawMessage(`"0x11"`), nil)
+
+		mockClient.
+			On("Fetch", mock.Anything, "eth_getBlockByNumber", []any{types.Hex("0x10"), true}).
+			Return(json.RawMessage(`{
+				"hash": "0xabc10",
+				"number": "0x10",
+				"transactions": [],
+				"withdrawals": []
+			}`), nil)
+
+		mockedErr := errors.New("block not found")
+		mockClient.
+			On("Fetch", mock.Anything, "eth_getBlockByNumber", []any{types.Hex("0x11"), true}).
+			Return(nil, mockedErr)
+
+		c := NewClient(mockClient)
+		events := make(chan watcher.BlockchainEvent, 2)
+
+		next := c.pollNewBlocks(t.Context(), types.Hex("0x10"), events)
+		assert.Equal(t, types.Hex("0x12"), next, "next block number should be latest + 1")
+
+		close(events)
+
+		ev1 := <-events
+		assert.Equal(t, types.Hex("0x10"), ev1.NewBlock.Number, "first event should be for block 0x10")
+		assert.NoError(t, ev1.Error, "first event should not have error")
+
+		ev2 := <-events
+		assert.Empty(t, ev2.NewBlock.Number, "second event should have empty block due to error")
+		assert.ErrorIs(t, ev2.Error, mockedErr, "second event should contain fetch error")
+		mockClient.AssertExpectations(t)
+	})
+}

@@ -131,24 +131,24 @@ func (c *client) getBlockByNumber(ctx context.Context, blockNumber types.Hex) (B
 	return blockResponse, json.Unmarshal(data, &blockResponse)
 }
 
-// pollNewBlocks fetches all new blocks from fromBlockNumber up to the latest block number,
-// and sends them as BlockchainEvent values to the eventsCh channel.
+// pollNewBlocks fetches and emits all blocks from fromBlockNumber up to the latest known block number.
 //
-// First, it retrieves the latest block number using eth_blockNumber. If this fails,
-// it sends a BlockchainEvent containing the error and returns fromBlockNumber unchanged.
+// It first calls getLatestBlockNumber using the JSON-RPC client. If this request fails,
+// a BlockchainEvent containing the error is sent to eventsCh, and the function returns
+// fromBlockNumber unchanged.
 //
-// If fromBlockNumber is equal to the latest block number, the function returns immediately
-// without emitting any events, as there are no new blocks to process.
+// If fromBlockNumber is greater than or equal to the latest block number, the function returns immediately
+// without emitting any events.
 //
-// Otherwise, for each block in the range [fromBlockNumber, latestBlockNumber], the function:
+// Otherwise, for each block in the range [fromBlockNumber, latestBlockNumber], it:
 //   - Fetches the block using eth_getBlockByNumber
-//   - Converts the block to the simplified watcher.Block format
-//   - Emits a BlockchainEvent to the channel, including the block and any fetch error
+//   - Converts it into a watcher.Block
+//   - Sends a BlockchainEvent containing the block and any fetch error to eventsCh
 //
-// This function performs a tight loop over the range and does not include delay or throttling.
-// It is intended to be invoked periodically (e.g., by a time.Ticker) to poll for new blocks.
+// This function does not include internal delays or throttling and should be invoked periodically
+// by a higher-level loop or scheduler (e.g., inside Listen).
 //
-// Returns the latest block number that was successfully queried, regardless of errors on individual blocks.
+// Returns the next block number to start from on the next polling iteration (latestBlockNumber + 1).
 func (c *client) pollNewBlocks(ctx context.Context, fromBlockNumber types.Hex, eventsCh chan<- watcher.BlockchainEvent) types.Hex {
 	latestBlockNumber, err := c.getLatestBlockNumber(ctx)
 	if err != nil {
@@ -156,8 +156,8 @@ func (c *client) pollNewBlocks(ctx context.Context, fromBlockNumber types.Hex, e
 		return fromBlockNumber
 	}
 
-	if fromBlockNumber == latestBlockNumber {
-		return latestBlockNumber
+	if fromBlockNumber >= latestBlockNumber {
+		return fromBlockNumber
 	}
 
 	currentBlockNumber := fromBlockNumber
@@ -172,7 +172,8 @@ func (c *client) pollNewBlocks(ctx context.Context, fromBlockNumber types.Hex, e
 		currentBlockNumber = currentBlockNumber.Add(1)
 	}
 
-	return latestBlockNumber
+	nextBlockNumber := latestBlockNumber.Add(1)
+	return nextBlockNumber
 }
 
 // Listen implements the watcher.Blockchain interface.
