@@ -3,7 +3,7 @@
 package ethereum
 
 import (
-	"github.com/gabapcia/blockwatch/internal/infra/blockchain/jsonrpc"
+	"github.com/gabapcia/blockwatch/internal/pkg/transport/jsonrpc"
 	"github.com/gabapcia/blockwatch/internal/watcher"
 )
 
