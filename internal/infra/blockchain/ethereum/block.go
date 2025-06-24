@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	// averageNumberOfTransactionsPerBlock defines the default buffer size for the event channel.
-	averageNumberOfTransactionsPerBlock = 200
+	// eventsChannelBufferSize defines the default buffer size for the event channel.
+	eventsChannelBufferSize = 200
 
 	// averageBlockTime defines the expected time between blocks in Ethereum.
 	averageBlockTime = 12 * time.Second
@@ -190,16 +190,19 @@ func (c *client) Listen(ctx context.Context, startFromBlockNumber types.Hex) (<-
 		startFromBlockNumber = latestBlockNumber
 	}
 
-	eventsCh := make(chan watcher.BlockchainEvent, averageNumberOfTransactionsPerBlock)
+	eventsCh := make(chan watcher.BlockchainEvent, eventsChannelBufferSize)
 	go func() {
 		defer close(eventsCh)
 
 		for {
+			startFromBlockNumber = c.pollNewBlocks(ctx, startFromBlockNumber, eventsCh)
+
 			select {
 			case <-ctx.Done():
 				return
+			// Wait for the average time between blocks before polling again.
+			// This reduces load on the node and avoids unnecessary duplicate polling.
 			case <-time.After(averageBlockTime):
-				startFromBlockNumber = c.pollNewBlocks(ctx, startFromBlockNumber, eventsCh)
 			}
 		}
 	}()
