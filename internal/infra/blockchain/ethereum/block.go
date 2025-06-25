@@ -152,7 +152,7 @@ func (c *client) getBlockByNumber(ctx context.Context, blockNumber types.Hex) (B
 func (c *client) pollNewBlocks(ctx context.Context, fromBlockNumber types.Hex, eventsCh chan<- watcher.BlockchainEvent) types.Hex {
 	latestBlockNumber, err := c.getLatestBlockNumber(ctx)
 	if err != nil {
-		eventsCh <- watcher.BlockchainEvent{Error: err}
+		eventsCh <- watcher.BlockchainEvent{Err: err}
 		return fromBlockNumber
 	}
 
@@ -165,8 +165,8 @@ func (c *client) pollNewBlocks(ctx context.Context, fromBlockNumber types.Hex, e
 		block, err := c.getBlockByNumber(ctx, currentBlockNumber)
 
 		eventsCh <- watcher.BlockchainEvent{
-			NewBlock: block.toWatcherBlock(),
-			Error:    err,
+			Block: block.toWatcherBlock(),
+			Err:   err,
 		}
 
 		currentBlockNumber = currentBlockNumber.Add(1)
@@ -176,18 +176,18 @@ func (c *client) pollNewBlocks(ctx context.Context, fromBlockNumber types.Hex, e
 	return nextBlockNumber
 }
 
-// Listen implements the watcher.Blockchain interface.
+// Subscribe implements the watcher.Blockchain interface.
 // It starts polling the Ethereum node for new blocks and emits BlockchainEvent values.
-// If startFromBlockNumber is empty, it starts from the latest block at the time of invocation.
+// If fromBlockNumber is empty, it starts from the latest block at the time of invocation.
 // The returned channel will be closed when the context is canceled.
-func (c *client) Listen(ctx context.Context, startFromBlockNumber types.Hex) (<-chan watcher.BlockchainEvent, error) {
-	if startFromBlockNumber == "" {
+func (c *client) Subscribe(ctx context.Context, fromBlockNumber types.Hex) (<-chan watcher.BlockchainEvent, error) {
+	if fromBlockNumber == "" {
 		latestBlockNumber, err := c.getLatestBlockNumber(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		startFromBlockNumber = latestBlockNumber
+		fromBlockNumber = latestBlockNumber
 	}
 
 	eventsCh := make(chan watcher.BlockchainEvent, eventsChannelBufferSize)
@@ -195,7 +195,7 @@ func (c *client) Listen(ctx context.Context, startFromBlockNumber types.Hex) (<-
 		defer close(eventsCh)
 
 		for {
-			startFromBlockNumber = c.pollNewBlocks(ctx, startFromBlockNumber, eventsCh)
+			fromBlockNumber = c.pollNewBlocks(ctx, fromBlockNumber, eventsCh)
 
 			select {
 			case <-ctx.Done():

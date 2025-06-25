@@ -209,9 +209,9 @@ func TestClient_pollNewBlocks(t *testing.T) {
 		close(events)
 		var count int
 		for ev := range events {
-			assert.NoError(t, ev.Error, "event error should be nil")
+			assert.NoError(t, ev.Err, "event error should be nil")
 			expected := types.Hex("0x10").Add(int64(count))
-			assert.Equal(t, expected, ev.NewBlock.Number, "block number mismatch at index %d", count)
+			assert.Equal(t, expected, ev.Block.Number, "block number mismatch at index %d", count)
 			count++
 		}
 		assert.Equal(t, 4, count, "number of emitted blocks should be 4")
@@ -252,8 +252,8 @@ func TestClient_pollNewBlocks(t *testing.T) {
 
 		close(events)
 		ev := <-events
-		assert.Empty(t, ev.NewBlock.Hash, "no block should be present when latest fetch fails")
-		assert.ErrorIs(t, ev.Error, expectedErr, "event should contain the fetch error")
+		assert.Empty(t, ev.Block.Hash, "no block should be present when latest fetch fails")
+		assert.ErrorIs(t, ev.Err, expectedErr, "event should contain the fetch error")
 		mockClient.AssertExpectations(t)
 	})
 
@@ -287,17 +287,17 @@ func TestClient_pollNewBlocks(t *testing.T) {
 		close(events)
 
 		ev1 := <-events
-		assert.Equal(t, types.Hex("0x10"), ev1.NewBlock.Number, "first event should be for block 0x10")
-		assert.NoError(t, ev1.Error, "first event should not have error")
+		assert.Equal(t, types.Hex("0x10"), ev1.Block.Number, "first event should be for block 0x10")
+		assert.NoError(t, ev1.Err, "first event should not have error")
 
 		ev2 := <-events
-		assert.Empty(t, ev2.NewBlock.Number, "second event should have empty block due to error")
-		assert.ErrorIs(t, ev2.Error, mockedErr, "second event should contain fetch error")
+		assert.Empty(t, ev2.Block.Number, "second event should have empty block due to error")
+		assert.ErrorIs(t, ev2.Err, mockedErr, "second event should contain fetch error")
 		mockClient.AssertExpectations(t)
 	})
 }
 
-func TestClient_Listen(t *testing.T) {
+func TestClient_Subscribe(t *testing.T) {
 	t.Run("emits events when start is less than latest", func(t *testing.T) {
 		mockClient := new(jsonrpctest.Client)
 
@@ -322,7 +322,7 @@ func TestClient_Listen(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 		defer cancel()
 
-		eventsCh, err := c.Listen(ctx, types.Hex("0x10"))
+		eventsCh, err := c.Subscribe(ctx, types.Hex("0x10"))
 		assert.NoError(t, err)
 
 		var events []watcher.BlockchainEvent
@@ -333,8 +333,8 @@ func TestClient_Listen(t *testing.T) {
 		assert.Len(t, events, 3)
 		for i, ev := range events {
 			expectedNumber := types.Hex("0x10").Add(int64(i))
-			assert.Equal(t, expectedNumber, ev.NewBlock.Number)
-			assert.NoError(t, ev.Error)
+			assert.Equal(t, expectedNumber, ev.Block.Number)
+			assert.NoError(t, ev.Err)
 		}
 
 		mockClient.AssertExpectations(t)
@@ -352,7 +352,7 @@ func TestClient_Listen(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 		defer cancel()
 
-		eventsCh, err := c.Listen(ctx, types.Hex("0x20"))
+		eventsCh, err := c.Subscribe(ctx, types.Hex("0x20"))
 		assert.NoError(t, err)
 
 		count := 0
@@ -403,7 +403,7 @@ func TestClient_Listen(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 		defer cancel()
 
-		eventsCh, err := c.Listen(ctx, "")
+		eventsCh, err := c.Subscribe(ctx, "")
 		assert.NoError(t, err)
 
 		var events []watcher.BlockchainEvent
@@ -413,11 +413,11 @@ func TestClient_Listen(t *testing.T) {
 
 		assert.Len(t, events, 2)
 
-		assert.Equal(t, types.Hex("0x15"), events[0].NewBlock.Number)
-		assert.NoError(t, events[0].Error)
+		assert.Equal(t, types.Hex("0x15"), events[0].Block.Number)
+		assert.NoError(t, events[0].Err)
 
-		assert.Equal(t, types.Hex("0x16"), events[1].NewBlock.Number)
-		assert.NoError(t, events[1].Error)
+		assert.Equal(t, types.Hex("0x16"), events[1].Block.Number)
+		assert.NoError(t, events[1].Err)
 
 		mockClient.AssertExpectations(t)
 	})
@@ -452,7 +452,7 @@ func TestClient_Listen(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
 		defer cancel()
 
-		eventsCh, err := c.Listen(ctx, types.Hex("0x10"))
+		eventsCh, err := c.Subscribe(ctx, types.Hex("0x10"))
 		assert.NoError(t, err)
 
 		var events []watcher.BlockchainEvent
@@ -462,12 +462,12 @@ func TestClient_Listen(t *testing.T) {
 		assert.Len(t, events, 2)
 
 		// First event ok
-		assert.NoError(t, events[0].Error)
-		assert.Equal(t, types.Hex("0x10"), events[0].NewBlock.Number)
+		assert.NoError(t, events[0].Err)
+		assert.Equal(t, types.Hex("0x10"), events[0].Block.Number)
 
 		// Second event should carry sentinelErr
-		assert.ErrorIs(t, events[1].Error, sentinelErr)
-		assert.Empty(t, events[1].NewBlock.Number)
+		assert.ErrorIs(t, events[1].Err, sentinelErr)
+		assert.Empty(t, events[1].Block.Number)
 
 		mockClient.AssertExpectations(t)
 	})
@@ -485,7 +485,7 @@ func TestClient_Listen(t *testing.T) {
 			Once()
 
 		c := NewClient(mockClient)
-		eventsCh, err := c.Listen(t.Context(), "")
+		eventsCh, err := c.Subscribe(t.Context(), "")
 		assert.Nil(t, eventsCh)
 		assert.ErrorIs(t, err, sentinelErr)
 
