@@ -193,3 +193,25 @@ func TestHex_Int(t *testing.T) {
 		assert.Equal(t, int64(0), h.Int())
 	})
 }
+
+func TestHex_IsEmpty(t *testing.T) {
+	t.Run("empty string", func(t *testing.T) {
+		assert.True(t, Hex("").IsEmpty(), "IsEmpty should return true for empty string")
+	})
+
+	t.Run("whitespace only", func(t *testing.T) {
+		assert.True(t, Hex("  \n\t ").IsEmpty(), "IsEmpty should return true for whitespace-only string")
+	})
+
+	t.Run("valid hex", func(t *testing.T) {
+		assert.False(t, Hex("0x1a").IsEmpty(), "IsEmpty should return false for a valid hex value")
+	})
+
+	t.Run("hex with surrounding whitespace", func(t *testing.T) {
+		assert.False(t, Hex("  0x1a  ").IsEmpty(), "IsEmpty should return false even if hex has surrounding whitespace")
+	})
+
+	t.Run("non-hex non-empty", func(t *testing.T) {
+		assert.False(t, Hex(" abc ").IsEmpty(), "IsEmpty should return false for a non-empty non-hex string")
+	})
+}

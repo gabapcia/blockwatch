@@ -185,7 +185,7 @@ func (c *client) pollNewBlocks(ctx context.Context, fromBlockNumber types.Hex, e
 // If fromBlockNumber is empty, it starts from the latest block at the time of invocation.
 // The returned channel will be closed when the context is canceled.
 func (c *client) Subscribe(ctx context.Context, fromBlockNumber types.Hex) (<-chan watcher.BlockchainEvent, error) {
-	if fromBlockNumber == "" {
+	if fromBlockNumber.IsEmpty() {
 		latestBlockNumber, err := c.getLatestBlockNumber(ctx)
 		if err != nil {
 			return nil, err

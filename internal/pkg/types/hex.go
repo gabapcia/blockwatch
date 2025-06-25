@@ -66,3 +66,9 @@ func (h Hex) Int() int64 {
 	v, _ := strconv.ParseInt(string(h)[2:], 16, 64)
 	return v
 }
+
+// IsEmpty reports whether the Hex value is empty or contains only whitespace.
+// It returns true if the trimmed Hex string is exactly "", and false otherwise.
+func (h Hex) IsEmpty() bool {
+	return strings.TrimSpace(string(h)) == ""
+}
