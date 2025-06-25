@@ -12,10 +12,10 @@ import (
 )
 
 const (
-	// eventsChannelBufferSize defines the default buffer size for the event channel.
+	// eventsChannelBufferSize is the buffer size for the BlockchainEvent channel.
 	eventsChannelBufferSize = 200
 
-	// averageBlockTime defines the expected time between blocks in Ethereum.
+	// averageBlockTime is the expected time between Ethereum blocks.
 	averageBlockTime = 12 * time.Second
 )
 
@@ -86,7 +86,7 @@ type (
 	}
 )
 
-// toWatcherTransaction converts a TransactionResponse to a simplified watcher.Transaction.
+// toWatcherTransaction converts a TransactionResponse into a watcher.Transaction.
 func (t TransactionResponse) toWatcherTransaction() watcher.Transaction {
 	return watcher.Transaction{
 		Hash: t.Hash,
@@ -95,103 +95,109 @@ func (t TransactionResponse) toWatcherTransaction() watcher.Transaction {
 	}
 }
 
-// toWatcherBlock converts a BlockResponse to a simplified watcher.Block.
+// toWatcherBlock converts a BlockResponse into a watcher.Block.
 func (b BlockResponse) toWatcherBlock() watcher.Block {
-	transactions := make([]watcher.Transaction, len(b.Transactions))
-	for i, t := range b.Transactions {
-		transactions[i] = t.toWatcherTransaction()
+	out := make([]watcher.Transaction, len(b.Transactions))
+	for i, tx := range b.Transactions {
+		out[i] = tx.toWatcherTransaction()
 	}
 
 	return watcher.Block{
-		Number:       b.Number,
+		Height:       b.Number,
 		Hash:         b.Hash,
-		Transactions: transactions,
+		Transactions: out,
 	}
 }
 
-// getLatestBlockNumber fetches the latest block number from the Ethereum node.
+// getLatestBlockNumber fetches the latest block height from the node using eth_blockNumber.
 func (c *client) getLatestBlockNumber(ctx context.Context) (types.Hex, error) {
 	data, err := c.conn.Fetch(ctx, "eth_blockNumber")
 	if err != nil {
 		return "", err
 	}
-
-	var blockNumber types.Hex
-	return blockNumber, json.Unmarshal(data, &blockNumber)
+	var height types.Hex
+	return height, json.Unmarshal(data, &height)
 }
 
-// getBlockByNumber retrieves a full block by its number.
-func (c *client) getBlockByNumber(ctx context.Context, blockNumber types.Hex) (BlockResponse, error) {
-	data, err := c.conn.Fetch(ctx, "eth_getBlockByNumber", blockNumber, true)
+// getBlockByNumber retrieves a BlockResponse for the given height using eth_getBlockByNumber.
+func (c *client) getBlockByNumber(ctx context.Context, height types.Hex) (BlockResponse, error) {
+	data, err := c.conn.Fetch(ctx, "eth_getBlockByNumber", height, true)
 	if err != nil {
 		return BlockResponse{}, err
 	}
-
-	var blockResponse BlockResponse
-	return blockResponse, json.Unmarshal(data, &blockResponse)
+	var resp BlockResponse
+	return resp, json.Unmarshal(data, &resp)
 }
 
-// pollNewBlocks fetches and emits all blocks from fromBlockNumber up to the latest known block number.
+// pollNewBlocks retrieves and emits all new blocks from the starting height up to the current latest height.
 //
-// It first calls getLatestBlockNumber using the JSON-RPC client. If this request fails,
-// a BlockchainEvent containing the error is sent to eventsCh, and the function returns
-// fromBlockNumber unchanged.
+// The function proceeds as follows:
+//  1. Fetches the current latest height via getLatestBlockNumber.
+//     - On error, it emits a single BlockchainEvent with:
+//     • Height: fromHeight
+//     • Err: the retrieval error
+//     and returns fromHeight unchanged, allowing the caller to retry later.
+//  2. If fromHeight is greater than or equal to the latest height, there are
+//     no new blocks to process. It returns fromHeight immediately, emitting no events.
+//  3. Otherwise, for each height h in the inclusive range [fromHeight, latestHeight]:
+//     a. Calls getBlockByNumber(ctx, h).
+//     b. Converts the raw BlockResponse to watcher.Block via toWatcherBlock.
+//     c. Emits a BlockchainEvent on eventsCh containing:
+//     • Height: h
+//     • Block: the converted block (zero-value if an error occurred)
+//     • Err: any fetch or unmarshal error for that block.
+//  4. After emitting events for all heights up to latestHeight, it returns
+//     latestHeight + 1, indicating the next height to begin from on the
+//     following polling iteration.
 //
-// If fromBlockNumber is greater than or equal to the latest block number, the function returns immediately
-// without emitting any events.
-//
-// Otherwise, for each block in the range [fromBlockNumber, latestBlockNumber], it:
-//   - Fetches the block using eth_getBlockByNumber
-//   - Converts it into a watcher.Block
-//   - Sends a BlockchainEvent containing the block and any fetch error to eventsCh
-//
-// This function does not include internal delays or throttling and should be invoked periodically
-// by a higher-level loop or scheduler (e.g., inside Listen).
-//
-// Returns the next block number to start from on the next polling iteration (latestBlockNumber + 1).
-func (c *client) pollNewBlocks(ctx context.Context, fromBlockNumber types.Hex, eventsCh chan<- watcher.BlockchainEvent) types.Hex {
-	latestBlockNumber, err := c.getLatestBlockNumber(ctx)
+// This function itself does not perform any waiting or backoff; it is intended
+// to be invoked periodically (for example, by a time.Ticker in Subscribe),
+// which handles scheduling and context cancellation.
+func (c *client) pollNewBlocks(ctx context.Context, fromHeight types.Hex, eventsCh chan<- watcher.BlockchainEvent) types.Hex {
+	latestHeight, err := c.getLatestBlockNumber(ctx)
 	if err != nil {
+		eventsCh <- watcher.BlockchainEvent{Height: fromHeight, Err: err}
+		return fromHeight
+	}
+
+	if fromHeight >= latestHeight {
+		return fromHeight
+	}
+
+	for h := fromHeight; h.Int() <= latestHeight.Int(); h = h.Add(1) {
+		blockResp, err := c.getBlockByNumber(ctx, h)
 		eventsCh <- watcher.BlockchainEvent{
-			Height: fromBlockNumber,
+			Height: h,
+			Block:  blockResp.toWatcherBlock(),
 			Err:    err,
 		}
-		return fromBlockNumber
 	}
 
-	if fromBlockNumber >= latestBlockNumber {
-		return fromBlockNumber
-	}
-
-	currentBlockNumber := fromBlockNumber
-	for currentBlockNumber.Int() <= latestBlockNumber.Int() {
-		block, err := c.getBlockByNumber(ctx, currentBlockNumber)
-
-		eventsCh <- watcher.BlockchainEvent{
-			Height: currentBlockNumber,
-			Block:  block.toWatcherBlock(),
-			Err:    err,
-		}
-
-		currentBlockNumber = currentBlockNumber.Add(1)
-	}
-
-	nextBlockNumber := latestBlockNumber.Add(1)
-	return nextBlockNumber
+	return latestHeight.Add(1)
 }
 
-// Subscribe implements the watcher.Blockchain interface.
-// It starts polling the Ethereum node for new blocks and emits BlockchainEvent values.
-// If fromBlockNumber is empty, it starts from the latest block at the time of invocation.
-// The returned channel will be closed when the context is canceled.
-func (c *client) Subscribe(ctx context.Context, fromBlockNumber types.Hex) (<-chan watcher.BlockchainEvent, error) {
-	if fromBlockNumber.IsEmpty() {
-		latestBlockNumber, err := c.getLatestBlockNumber(ctx)
+// FetchBlockByHeight retrieves a single block at the specified height.
+// It returns the converted watcher.Block or an error if fetching fails.
+func (c *client) FetchBlockByHeight(ctx context.Context, height types.Hex) (watcher.Block, error) {
+	resp, err := c.getBlockByNumber(ctx, height)
+	if err != nil {
+		return watcher.Block{}, err
+	}
+
+	return resp.toWatcherBlock(), nil
+}
+
+// Subscribe begins streaming new blocks starting at fromHeight (inclusive).
+// If fromHeight is empty, it first fetches the latest height and starts from there.
+// It returns a receive-only channel of BlockchainEvent; the channel is closed when ctx is canceled.
+func (c *client) Subscribe(ctx context.Context, fromHeight types.Hex) (<-chan watcher.BlockchainEvent, error) {
+	if fromHeight.IsEmpty() {
+		h, err := c.getLatestBlockNumber(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		fromBlockNumber = latestBlockNumber
+		fromHeight = h
 	}
 
 	eventsCh := make(chan watcher.BlockchainEvent, eventsChannelBufferSize)
@@ -199,13 +205,12 @@ func (c *client) Subscribe(ctx context.Context, fromBlockNumber types.Hex) (<-ch
 		defer close(eventsCh)
 
 		for {
-			fromBlockNumber = c.pollNewBlocks(ctx, fromBlockNumber, eventsCh)
+			fromHeight = c.pollNewBlocks(ctx, fromHeight, eventsCh)
 
 			select {
 			case <-ctx.Done():
 				return
-			// Wait for the average time between blocks before polling again.
-			// This reduces load on the node and avoids unnecessary duplicate polling.
+			// delay before next poll to match average block time
 			case <-time.After(averageBlockTime):
 			}
 		}

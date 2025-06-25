@@ -52,7 +52,7 @@ func TestBlockResponse_toWatcherBlock(t *testing.T) {
 
 		expected := watcher.Block{
 			Hash:   "0xblockhash",
-			Number: types.Hex("0x10"),
+			Height: types.Hex("0x10"),
 			Transactions: []watcher.Transaction{
 				{Hash: "0x1", From: "0xA", To: "0xB"},
 				{Hash: "0x2", From: "0xC", To: "0xD"},
@@ -212,7 +212,7 @@ func TestClient_pollNewBlocks(t *testing.T) {
 			assert.NoError(t, ev.Err, "event error should be nil")
 			expected := types.Hex("0x10").Add(int64(count))
 			assert.Equal(t, expected, ev.Height, "block height mismatch at index %d", count)
-			assert.Equal(t, expected, ev.Block.Number, "block number mismatch at index %d", count)
+			assert.Equal(t, expected, ev.Block.Height, "block number mismatch at index %d", count)
 			count++
 		}
 		assert.Equal(t, 4, count, "number of emitted blocks should be 4")
@@ -289,14 +289,65 @@ func TestClient_pollNewBlocks(t *testing.T) {
 		close(events)
 
 		ev1 := <-events
-		assert.Equal(t, types.Hex("0x10"), ev1.Block.Number, "first event should be for block 0x10")
+		assert.Equal(t, types.Hex("0x10"), ev1.Block.Height, "first event should be for block 0x10")
 		assert.Equal(t, types.Hex("0x10"), ev1.Height, "first event should be for block 0x10")
 		assert.NoError(t, ev1.Err, "first event should not have error")
 
 		ev2 := <-events
-		assert.Empty(t, ev2.Block.Number, "second event should have empty block due to error")
+		assert.Empty(t, ev2.Block.Height, "second event should have empty block due to error")
 		assert.Equal(t, types.Hex("0x11"), ev2.Height, "second event should be for block 0x11")
 		assert.ErrorIs(t, ev2.Err, mockedErr, "second event should contain fetch error")
+		mockClient.AssertExpectations(t)
+	})
+}
+
+func TestClient_FetchBlockByHeight(t *testing.T) {
+	t.Run("returns converted block on success", func(t *testing.T) {
+		// Arrange: set up mock to return a valid BlockResponse JSON
+		mockClient := new(jsonrpctest.Client)
+		rawJSON := json.RawMessage(`{
+			"hash": "0xabc",
+			"number": "0x10",
+			"transactions": [{"hash": "0x1", "from": "0xa", "to": "0xb"}],
+			"withdrawals": []
+		}`)
+		// Expect Fetch with correct parameters
+		mockClient.On("Fetch", mock.Anything, "eth_getBlockByNumber", []any{types.Hex("0x10"), true}).
+			Return(rawJSON, nil)
+
+		client := NewClient(mockClient)
+
+		// Act
+		block, err := client.FetchBlockByHeight(t.Context(), types.Hex("0x10"))
+
+		// Assert
+		assert.NoError(t, err, "FetchBlockByHeight should not return an error on valid input")
+		assert.Equal(t, types.Hex("0x10"), block.Height, "block height should match the requested height")
+		assert.Equal(t, "0xabc", block.Hash, "block hash should match the JSON response")
+		assert.Len(t, block.Transactions, 1, "there should be exactly one transaction")
+		// Validate transaction conversion
+		expectedTx := watcher.Transaction{Hash: "0x1", From: "0xa", To: "0xb"}
+		assert.Equal(t, expectedTx, block.Transactions[0], "transaction should be converted correctly")
+
+		mockClient.AssertExpectations(t)
+	})
+
+	t.Run("returns error when underlying fetch fails", func(t *testing.T) {
+		// Arrange: mock error
+		mockClient := new(jsonrpctest.Client)
+		expectedErr := errors.New("rpc failure")
+		mockClient.On("Fetch", mock.Anything, "eth_getBlockByNumber", []any{types.Hex("0x20"), true}).
+			Return(nil, expectedErr)
+
+		client := NewClient(mockClient)
+
+		// Act
+		block, err := client.FetchBlockByHeight(t.Context(), types.Hex("0x20"))
+
+		// Assert
+		assert.ErrorIs(t, err, expectedErr, "FetchBlockByHeight should return the underlying error")
+		assert.Empty(t, block, "block should be empty when an error occurs")
+
 		mockClient.AssertExpectations(t)
 	})
 }
@@ -338,7 +389,7 @@ func TestClient_Subscribe(t *testing.T) {
 		for i, ev := range events {
 			expectedNumber := types.Hex("0x10").Add(int64(i))
 			assert.Equal(t, expectedNumber, ev.Height)
-			assert.Equal(t, expectedNumber, ev.Block.Number)
+			assert.Equal(t, expectedNumber, ev.Block.Height)
 			assert.NoError(t, ev.Err)
 		}
 
@@ -418,11 +469,11 @@ func TestClient_Subscribe(t *testing.T) {
 
 		assert.Len(t, events, 2)
 
-		assert.Equal(t, types.Hex("0x15"), events[0].Block.Number)
+		assert.Equal(t, types.Hex("0x15"), events[0].Block.Height)
 		assert.Equal(t, types.Hex("0x15"), events[0].Height)
 		assert.NoError(t, events[0].Err)
 
-		assert.Equal(t, types.Hex("0x16"), events[1].Block.Number)
+		assert.Equal(t, types.Hex("0x16"), events[1].Block.Height)
 		assert.Equal(t, types.Hex("0x16"), events[1].Height)
 		assert.NoError(t, events[1].Err)
 
@@ -470,12 +521,12 @@ func TestClient_Subscribe(t *testing.T) {
 
 		// First event ok
 		assert.NoError(t, events[0].Err)
-		assert.Equal(t, types.Hex("0x10"), events[0].Block.Number)
+		assert.Equal(t, types.Hex("0x10"), events[0].Block.Height)
 		assert.Equal(t, types.Hex("0x10"), events[0].Height)
 
 		// Second event should carry sentinelErr
 		assert.ErrorIs(t, events[1].Err, sentinelErr)
-		assert.Empty(t, events[1].Block.Number)
+		assert.Empty(t, events[1].Block.Height)
 		assert.Equal(t, types.Hex("0x11"), events[1].Height)
 
 		mockClient.AssertExpectations(t)
