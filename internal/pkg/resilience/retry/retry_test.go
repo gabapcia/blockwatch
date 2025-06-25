@@ -1,6 +1,7 @@
 package retry
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -14,7 +15,7 @@ func TestRetry_Execute(t *testing.T) {
 		r := New()
 		callCount := 0
 
-		err := r.Execute(func() error {
+		err := r.Execute(t.Context(), func() error {
 			callCount++
 			return nil
 		})
@@ -27,7 +28,7 @@ func TestRetry_Execute(t *testing.T) {
 		r := New(WithAttempts(3))
 		callCount := 0
 
-		err := r.Execute(func() error {
+		err := r.Execute(t.Context(), func() error {
 			callCount++
 			if callCount < 2 {
 				return errors.New("temporary error")
@@ -48,7 +49,7 @@ func TestRetry_Execute(t *testing.T) {
 		callCount := 0
 		expectedErr := errors.New("persistent error")
 
-		err := r.Execute(func() error {
+		err := r.Execute(t.Context(), func() error {
 			callCount++
 			return expectedErr
 		})
@@ -56,6 +57,32 @@ func TestRetry_Execute(t *testing.T) {
 		assert.Error(t, err)
 		assert.ErrorIs(t, err, expectedErr)
 		assert.Equal(t, 3, callCount, "Operation should be called exactly 3 times")
+	})
+
+	t.Run("context cancellation", func(t *testing.T) {
+		r := New(
+			WithAttempts(5),
+			WithDelay(100*time.Millisecond),
+		)
+		callCount := 0
+
+		// Create a context that will be canceled after the first attempt
+		ctx, cancel := context.WithCancel(t.Context())
+
+		// Cancel the context after a short delay
+		go func() {
+			time.Sleep(10 * time.Millisecond)
+			cancel()
+		}()
+
+		err := r.Execute(ctx, func() error {
+			callCount++
+			return errors.New("error that would normally trigger retry")
+		})
+
+		assert.Error(t, err)
+		assert.Equal(t, 1, callCount, "Operation should be called exactly once due to context cancellation")
+		assert.ErrorIs(t, err, context.Canceled)
 	})
 }
 

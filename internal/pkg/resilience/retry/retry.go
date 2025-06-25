@@ -8,7 +8,7 @@
 // Basic usage:
 //
 //	r := retry.New()
-//	err := r.Execute(func() error {
+//	err := r.Execute(context.Background(), func() error {
 //	    // Your operation that might fail temporarily
 //	    return someOperation()
 //	})
@@ -24,6 +24,7 @@
 package retry
 
 import (
+	"context"
 	"time"
 
 	retry "github.com/avast/retry-go/v4"
@@ -37,12 +38,16 @@ type Retry interface {
 	// It will retry the operation according to the configured parameters
 	// if it returns an error.
 	//
+	// The context allows for cancellation and timeout control. If the context
+	// is canceled or times out, the operation will stop retrying and return
+	// the context error.
+	//
 	// The operation function should be idempotent (safe to call multiple times)
 	// and should return nil on success or an error on failure.
 	//
 	// Execute returns nil if the operation succeeds within the configured
-	// number of attempts, or an error if all attempts fail.
-	Execute(operation func() error) error
+	// number of attempts, or an error if all attempts fail or the context is done.
+	Execute(ctx context.Context, operation func() error) error
 }
 
 // config holds internal settings for the retry mechanism.
@@ -111,7 +116,9 @@ func New(opts ...Option) Retry {
 // Example:
 //
 //	r := retry.New()
-//	err := r.Execute(func() error {
+//	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+//	defer cancel()
+//	err := r.Execute(ctx, func() error {
 //	    resp, err := http.Get("https://example.com")
 //	    if err != nil {
 //	        return err
@@ -120,13 +127,14 @@ func New(opts ...Option) Retry {
 //	    // Process response...
 //	    return nil
 //	})
-func (r *retrier) Execute(operation func() error) error {
+func (r *retrier) Execute(ctx context.Context, operation func() error) error {
 	options := []retry.Option{
 		retry.Attempts(r.cfg.attempts),
 		retry.Delay(r.cfg.delay),
 		retry.MaxDelay(r.cfg.maxDelay),
 		retry.DelayType(retry.BackOffDelay), // Use exponential backoff
 		retry.LastErrorOnly(r.cfg.lastErrOnly),
+		retry.Context(ctx), // Use the provided context for cancellation
 	}
 
 	return retry.Do(operation, options...)
