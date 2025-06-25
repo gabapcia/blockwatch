@@ -11,7 +11,7 @@ import (
 
 func TestNewClient(t *testing.T) {
 	t.Run("returns valid ethereum client with jsonrpc mock", func(t *testing.T) {
-		mockConn := &jsonrpctest.MockClient{}
+		mockConn := new(jsonrpctest.Client)
 		c := NewClient(mockConn)
 
 		assert.NotNil(t, c, "NewClient should not return nil")

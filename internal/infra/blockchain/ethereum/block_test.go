@@ -66,7 +66,7 @@ func TestBlockResponse_toWatcherBlock(t *testing.T) {
 
 func TestClient_getLatestBlockNumber(t *testing.T) {
 	t.Run("returns latest block number successfully", func(t *testing.T) {
-		mockClient := new(jsonrpctest.MockClient)
+		mockClient := new(jsonrpctest.Client)
 		raw := json.RawMessage(`"0x10"`)
 
 		mockClient.
@@ -83,7 +83,7 @@ func TestClient_getLatestBlockNumber(t *testing.T) {
 	})
 
 	t.Run("returns error when fetch fails", func(t *testing.T) {
-		mockClient := new(jsonrpctest.MockClient)
+		mockClient := new(jsonrpctest.Client)
 
 		mockClient.
 			On("Fetch", mock.Anything, "eth_blockNumber").
@@ -99,7 +99,7 @@ func TestClient_getLatestBlockNumber(t *testing.T) {
 	})
 
 	t.Run("returns error on invalid response", func(t *testing.T) {
-		mockClient := new(jsonrpctest.MockClient)
+		mockClient := new(jsonrpctest.Client)
 		invalidJSON := json.RawMessage(`not-a-hex-string`)
 
 		mockClient.
@@ -118,7 +118,7 @@ func TestClient_getLatestBlockNumber(t *testing.T) {
 
 func TestClient_getBlockByNumber(t *testing.T) {
 	t.Run("returns block successfully", func(t *testing.T) {
-		mockClient := new(jsonrpctest.MockClient)
+		mockClient := new(jsonrpctest.Client)
 
 		mockJSON := json.RawMessage(`{
 			"hash": "0xabc",
@@ -146,7 +146,7 @@ func TestClient_getBlockByNumber(t *testing.T) {
 	})
 
 	t.Run("returns error when fetch fails", func(t *testing.T) {
-		mockClient := new(jsonrpctest.MockClient)
+		mockClient := new(jsonrpctest.Client)
 
 		mockClient.
 			On("Fetch", mock.Anything, "eth_getBlockByNumber", []any{types.Hex("0x10"), true}).
@@ -162,7 +162,7 @@ func TestClient_getBlockByNumber(t *testing.T) {
 	})
 
 	t.Run("returns error on invalid json", func(t *testing.T) {
-		mockClient := new(jsonrpctest.MockClient)
+		mockClient := new(jsonrpctest.Client)
 
 		mockJSON := json.RawMessage(`{ invalid-json`)
 
@@ -182,7 +182,7 @@ func TestClient_getBlockByNumber(t *testing.T) {
 
 func TestClient_pollNewBlocks(t *testing.T) {
 	t.Run("emits all blocks from fromBlockNumber up to latest, returns latest+1", func(t *testing.T) {
-		mockClient := new(jsonrpctest.MockClient)
+		mockClient := new(jsonrpctest.Client)
 
 		// latest block: 0x13
 		mockClient.
@@ -219,7 +219,7 @@ func TestClient_pollNewBlocks(t *testing.T) {
 	})
 
 	t.Run("returns immediately when fromBlockNumber >= latestBlockNumber", func(t *testing.T) {
-		mockClient := new(jsonrpctest.MockClient)
+		mockClient := new(jsonrpctest.Client)
 
 		mockClient.
 			On("Fetch", mock.Anything, "eth_blockNumber").
@@ -237,7 +237,7 @@ func TestClient_pollNewBlocks(t *testing.T) {
 	})
 
 	t.Run("returns same block number and emits error when latest block fetch fails", func(t *testing.T) {
-		mockClient := new(jsonrpctest.MockClient)
+		mockClient := new(jsonrpctest.Client)
 
 		expectedErr := errors.New("rpc error")
 		mockClient.
@@ -258,7 +258,7 @@ func TestClient_pollNewBlocks(t *testing.T) {
 	})
 
 	t.Run("emits partial success and error for failing block", func(t *testing.T) {
-		mockClient := new(jsonrpctest.MockClient)
+		mockClient := new(jsonrpctest.Client)
 
 		mockClient.
 			On("Fetch", mock.Anything, "eth_blockNumber").
@@ -299,7 +299,7 @@ func TestClient_pollNewBlocks(t *testing.T) {
 
 func TestClient_Listen(t *testing.T) {
 	t.Run("emits events when start is less than latest", func(t *testing.T) {
-		mockClient := new(jsonrpctest.MockClient)
+		mockClient := new(jsonrpctest.Client)
 
 		// Simulate latest block number = 0x12
 		mockClient.
@@ -341,7 +341,7 @@ func TestClient_Listen(t *testing.T) {
 	})
 
 	t.Run("no events when start equals latest", func(t *testing.T) {
-		mockClient := new(jsonrpctest.MockClient)
+		mockClient := new(jsonrpctest.Client)
 
 		// Latest block number = 0x20
 		mockClient.
@@ -365,7 +365,7 @@ func TestClient_Listen(t *testing.T) {
 	})
 
 	t.Run("emits events when start is empty (uses latest as start)", func(t *testing.T) {
-		mockClient := new(jsonrpctest.MockClient)
+		mockClient := new(jsonrpctest.Client)
 
 		// First fetch: determine latest = 0x15
 		mockClient.
@@ -424,7 +424,7 @@ func TestClient_Listen(t *testing.T) {
 
 	t.Run("propagates block fetch errors to channel", func(t *testing.T) {
 		var (
-			mockClient  = new(jsonrpctest.MockClient)
+			mockClient  = new(jsonrpctest.Client)
 			sentinelErr = errors.New("block not found")
 		)
 
@@ -474,7 +474,7 @@ func TestClient_Listen(t *testing.T) {
 
 	t.Run("returns error if initial getLatestBlockNumber fails", func(t *testing.T) {
 		var (
-			mockClient  = new(jsonrpctest.MockClient)
+			mockClient  = new(jsonrpctest.Client)
 			sentinelErr = errors.New("rpc down")
 		)
 

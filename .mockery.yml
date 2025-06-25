@@ -1,17 +1,18 @@
 all: false
 force-file-write: true
-structname: '{{.Mock}}{{.InterfaceName}}'
 packages:
-  github.com/gabapcia/blockwatch:
+  github.com/gabapcia/blockwatch/internal/pkg:
     config:
       all: true
       recursive: true
       dir: '{{.InterfaceDir}}/{{.SrcPackageName}}test'
       filename: "{{.InterfaceName | snakecase}}.go"
       pkgname: '{{.SrcPackageName}}test'
+      structname: '{{.InterfaceName}}'
   github.com/gabapcia/blockwatch/internal/watcher:
     config:
       all: true
       dir: '{{.InterfaceDir}}'
       filename: "{{.InterfaceName | snakecase}}_mock_test.go"
       pkgname: '{{.SrcPackageName}}'
+      structname: '{{.InterfaceName}}{{.Mock}}'
