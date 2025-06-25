@@ -2,6 +2,7 @@ package jsonrpc
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -9,7 +10,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestResponse_Err(t *testing.T) {
@@ -49,155 +49,91 @@ func TestResponse_Err(t *testing.T) {
 }
 
 func TestClient_Fetch(t *testing.T) {
-	t.Run("successful response with result", func(t *testing.T) {
-		expected := map[string]any{"hello": "world"}
-		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	t.Run("successful response returns raw result", func(t *testing.T) {
+		expected := map[string]any{"foo": "bar"}
+		// Mock server returning a valid JSON-RPC result
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]any{
 				"jsonrpc": "2.0",
-				"result":  expected,
 				"id":      "1",
+				"result":  expected,
 			})
 		}))
-		defer mockServer.Close()
+		defer server.Close()
 
-		c := NewClient(mockServer.URL)
-
-		result, err := c.Fetch(t.Context(), "dummy_method")
-		assert.NoError(t, err)
+		c := NewClient(server.Client(), server.URL)
+		raw, err := c.Fetch(t.Context(), "testMethod", "param1", 2)
+		assert.NoError(t, err, "Fetch should not return error on valid JSON-RPC response")
 
 		var actual map[string]any
-		err = json.Unmarshal(result, &actual)
-		assert.NoError(t, err)
-		assert.Equal(t, expected, actual)
+		err = json.Unmarshal(raw, &actual)
+		assert.NoError(t, err, "Unmarshalling raw result should succeed")
+		assert.Equal(t, expected, actual, "Fetched result should match expected value")
 	})
 
-	t.Run("response with JSON-RPC error", func(t *testing.T) {
-		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	t.Run("json-rpc error response returns error", func(t *testing.T) {
+		// Mock server returning a JSON-RPC error
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]any{
 				"jsonrpc": "2.0",
 				"error": map[string]any{
-					"code":    -32601,
-					"message": "method not found",
+					"code":    123,
+					"message": "failure",
 				},
 				"id": "1",
 			})
 		}))
-		defer mockServer.Close()
+		defer server.Close()
 
-		c := NewClient(mockServer.URL)
-
-		result, err := c.Fetch(t.Context(), "nonexistent_method")
-		assert.Error(t, err)
-		assert.Nil(t, result)
-		assert.Contains(t, err.Error(), "method not found")
+		c := NewClient(server.Client(), server.URL)
+		raw, err := c.Fetch(t.Context(), "method")
+		assert.Error(t, err, "Fetch should return error for JSON-RPC error response")
+		assert.True(t, errors.Is(err, ErrProviderReturnedError), "error should wrap ErrProviderReturnedError")
+		assert.Contains(t, err.Error(), "[123]", "error message should contain code")
+		assert.Contains(t, err.Error(), "failure", "error message should contain message")
+		assert.Empty(t, raw, "raw result should be empty when error occurs")
 	})
 
-	t.Run("malformed JSON response", func(t *testing.T) {
-		mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte("this is not json"))
+	t.Run("invalid JSON returns error", func(t *testing.T) {
+		// Mock server returning invalid JSON
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte("not valid json"))
 		}))
-		defer mockServer.Close()
+		defer server.Close()
 
-		c := NewClient(mockServer.URL)
-
-		result, err := c.Fetch(t.Context(), "bad_json")
-		assert.Error(t, err)
-		assert.Nil(t, result)
-		assert.Contains(t, err.Error(), "invalid character")
+		c := NewClient(server.Client(), server.URL)
+		raw, err := c.Fetch(t.Context(), "method")
+		assert.Error(t, err, "Fetch should return error for invalid JSON")
+		assert.Contains(t, err.Error(), "invalid character", "error message should indicate JSON parsing failure")
+		assert.Empty(t, raw, "raw result should be empty when parsing fails")
 	})
 
-	t.Run("network error when server is down", func(t *testing.T) {
-		mockServer := httptest.NewServer(nil)
-		mockServer.Close() // Immediately close
+	t.Run("network error returns error", func(t *testing.T) {
+		// Close server immediately to simulate network failure
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+		url := server.URL
+		server.Close()
 
-		c := NewClient(mockServer.URL,
-			WithTimeout(1*time.Second),
-			WithRetryMax(0),
-		)
-
-		result, err := c.Fetch(t.Context(), "network_failure")
-		assert.Error(t, err)
-		assert.Nil(t, result)
+		c := NewClient(http.DefaultClient, url)
+		raw, err := c.Fetch(t.Context(), "method")
+		assert.Error(t, err, "Fetch should return error when network fails")
+		assert.Empty(t, raw, "raw result should be empty on network failure")
 	})
 }
 
 func TestNewClient(t *testing.T) {
-	t.Run("uses default configuration when no options are provided", func(t *testing.T) {
-		client := NewClient("http://localhost:8080")
+	t.Run("returns client with provided HTTP client and endpoint", func(t *testing.T) {
+		// given
+		customHTTPClient := &http.Client{Timeout: 123 * time.Millisecond}
+		endpoint := "http://localhost:8545"
 
-		assert.Equal(t, "http://localhost:8080", client.providerEndpoint)
-		assert.NotNil(t, client.httpClient)
+		// when
+		c := NewClient(customHTTPClient, endpoint)
 
-		assert.Equal(t, 5*time.Second, client.httpClient.HTTPClient.Timeout, "default timeout should be 5s")
-		assert.Equal(t, 1*time.Second, client.httpClient.RetryWaitMin, "default retryWaitMin should be 1s")
-		assert.Equal(t, 5*time.Second, client.httpClient.RetryWaitMax, "default retryWaitMax should be 5s")
-		assert.Equal(t, 2, client.httpClient.RetryMax, "default retryMax should be 2")
+		// then
+		assert.NotNil(t, c, "NewClient should not return nil")
+		assert.Equal(t, customHTTPClient, c.httpClient, "httpClient should be set to the provided value")
+		assert.Equal(t, endpoint, c.providerEndpoint, "providerEndpoint should be set to the provided value")
 	})
-
-	t.Run("applies all custom options correctly", func(t *testing.T) {
-		timeout := 9 * time.Second
-		retryWaitMin := 111 * time.Millisecond
-		retryWaitMax := 3 * time.Second
-		retryMaxAttempts := 7
-
-		c := NewClient(
-			"http://localhost:8080",
-			WithTimeout(timeout),
-			WithRetryWaitMin(retryWaitMin),
-			WithRetryWaitMax(retryWaitMax),
-			WithRetryMax(retryMaxAttempts),
-		)
-
-		assert.Equal(t, "http://localhost:8080", c.providerEndpoint)
-		assert.NotNil(t, c.httpClient)
-
-		assert.Equal(t, timeout, c.httpClient.HTTPClient.Timeout, "custom timeout should be applied")
-		assert.Equal(t, retryWaitMin, c.httpClient.RetryWaitMin, "custom retryWaitMin should be applied")
-		assert.Equal(t, retryWaitMax, c.httpClient.RetryWaitMax, "custom retryWaitMax should be applied")
-		assert.Equal(t, retryMaxAttempts, c.httpClient.RetryMax, "custom retryMax should be applied")
-	})
-}
-
-func TestWithTimeout(t *testing.T) {
-	cfg := &config{}
-	timeout := 10 * time.Second
-
-	opt := WithTimeout(timeout)
-	require.NotNil(t, opt)
-
-	opt(cfg)
-	assert.Equal(t, timeout, cfg.timeout, "timeout should be set correctly")
-}
-
-func TestWithRetryWaitMin(t *testing.T) {
-	cfg := &config{}
-	min := 500 * time.Millisecond
-
-	opt := WithRetryWaitMin(min)
-	require.NotNil(t, opt)
-
-	opt(cfg)
-	assert.Equal(t, min, cfg.retryWaitMin, "retryWaitMin should be set correctly")
-}
-
-func TestWithRetryWaitMax(t *testing.T) {
-	cfg := &config{}
-	max := 8 * time.Second
-
-	opt := WithRetryWaitMax(max)
-	require.NotNil(t, opt)
-
-	opt(cfg)
-	assert.Equal(t, max, cfg.retryWaitMax, "retryWaitMax should be set correctly")
-}
-
-func TestWithRetryMax(t *testing.T) {
-	cfg := &config{}
-	retries := 5
-
-	opt := WithRetryMax(retries)
-	require.NotNil(t, opt)
-
-	opt(cfg)
-	assert.Equal(t, retries, cfg.retryMax, "retryMax should be set correctly")
 }

@@ -10,10 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
-	"github.com/hashicorp/go-retryablehttp"
 )
 
 // ErrProviderReturnedError indicates that the remote JSON-RPC server returned an error response.
@@ -47,11 +45,11 @@ type Client interface {
 	Fetch(ctx context.Context, method string, params ...any) (json.RawMessage, error)
 }
 
-// client is a reusable JSON-RPC client over HTTP.
-// It handles encoding requests, sending them, decoding responses, and retry logic.
+// client is the default implementation of the Client interface.
+// It sends JSON-RPC requests to the configured provider endpoint using the provided HTTP client.
 type client struct {
-	providerEndpoint string                // The URL of the remote JSON-RPC server
-	httpClient       *retryablehttp.Client // The HTTP client used to perform requests
+	providerEndpoint string       // The URL of the remote JSON-RPC server
+	httpClient       *http.Client // The HTTP client used to perform requests
 }
 
 // Compile-time assertion that client implements the Client interface.
@@ -71,7 +69,7 @@ func (c *client) Fetch(ctx context.Context, method string, params ...any) (json.
 		return nil, err
 	}
 
-	req, err := retryablehttp.NewRequestWithContext(ctx, http.MethodPost, c.providerEndpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.providerEndpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -92,76 +90,14 @@ func (c *client) Fetch(ctx context.Context, method string, params ...any) (json.
 	return data.Result, data.Err()
 }
 
-// config holds optional configuration parameters for the JSON-RPC client.
-type config struct {
-	timeout      time.Duration // Maximum time to wait for a HTTP request
-	retryWaitMin time.Duration // Minimum delay between retries
-	retryWaitMax time.Duration // Maximum delay between retries
-	retryMax     int           // Maximum number of retry attempts
-}
-
-// Option defines a functional option type used to customize the client configuration.
-type Option func(*config)
-
-// NewClient creates a new JSON-RPC client pointing to the specified server endpoint.
-// Optional configuration parameters can be supplied using functional options such as WithTimeout.
-// It includes retry support via the retryablehttp package.
-func NewClient(providerEndpoint string, opts ...Option) *client {
-	cfg := config{
-		timeout:      5 * time.Second,
-		retryWaitMin: 1 * time.Second,
-		retryWaitMax: 5 * time.Second,
-		retryMax:     2,
-	}
-	for _, opt := range opts {
-		opt(&cfg)
-	}
-
-	httpClient := retryablehttp.NewClient()
-	httpClient.Logger = nil
-	httpClient.HTTPClient.Timeout = cfg.timeout
-	httpClient.RetryWaitMin = cfg.retryWaitMin
-	httpClient.RetryWaitMax = cfg.retryWaitMax
-	httpClient.RetryMax = cfg.retryMax
-
+// NewClient constructs and returns a Client that will send JSON-RPC requests
+// to the specified provider endpoint using the given HTTP client.
+//
+// httpClient: the HTTP client to use for sending requests.
+// providerEndpoint: the URL of the JSON-RPC server.
+func NewClient(httpClient *http.Client, providerEndpoint string) *client {
 	return &client{
 		providerEndpoint: providerEndpoint,
 		httpClient:       httpClient,
-	}
-}
-
-// WithTimeout configures the maximum duration for a single HTTP request.
-//
-// Default: 5 seconds.
-func WithTimeout(d time.Duration) Option {
-	return func(c *config) {
-		c.timeout = d
-	}
-}
-
-// WithRetryWaitMin configures the minimum wait duration between retry attempts.
-//
-// Default: 1 second.
-func WithRetryWaitMin(d time.Duration) Option {
-	return func(c *config) {
-		c.retryWaitMin = d
-	}
-}
-
-// WithRetryWaitMax configures the maximum wait duration between retry attempts.
-//
-// Default: 5 seconds.
-func WithRetryWaitMax(d time.Duration) Option {
-	return func(c *config) {
-		c.retryWaitMax = d
-	}
-}
-
-// WithRetryMax configures the maximum number of retry attempts for failed requests.
-//
-// Default: 2 retries.
-func WithRetryMax(n int) Option {
-	return func(c *config) {
-		c.retryMax = n
 	}
 }
