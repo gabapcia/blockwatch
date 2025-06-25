@@ -152,7 +152,10 @@ func (c *client) getBlockByNumber(ctx context.Context, blockNumber types.Hex) (B
 func (c *client) pollNewBlocks(ctx context.Context, fromBlockNumber types.Hex, eventsCh chan<- watcher.BlockchainEvent) types.Hex {
 	latestBlockNumber, err := c.getLatestBlockNumber(ctx)
 	if err != nil {
-		eventsCh <- watcher.BlockchainEvent{Err: err}
+		eventsCh <- watcher.BlockchainEvent{
+			Height: fromBlockNumber,
+			Err:    err,
+		}
 		return fromBlockNumber
 	}
 
@@ -165,8 +168,9 @@ func (c *client) pollNewBlocks(ctx context.Context, fromBlockNumber types.Hex, e
 		block, err := c.getBlockByNumber(ctx, currentBlockNumber)
 
 		eventsCh <- watcher.BlockchainEvent{
-			Block: block.toWatcherBlock(),
-			Err:   err,
+			Height: currentBlockNumber,
+			Block:  block.toWatcherBlock(),
+			Err:    err,
 		}
 
 		currentBlockNumber = currentBlockNumber.Add(1)
