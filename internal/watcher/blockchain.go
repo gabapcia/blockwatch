@@ -35,46 +35,51 @@ type Blockchain interface {
 	Subscribe(ctx context.Context, fromHeight types.Hex) (<-chan BlockchainEvent, error)
 }
 
-// retryFailedBlockFetches launches a background goroutine that listens on retryCh
-// for NetworkError events reported by consumeSubscription, re-fetches each failed
-// block using the service’s retry policy, and:
-//   - On success: emits the recovered NetworkBlock to recoveredCh (and drops the error).
-//   - On persistent failure after retries: attaches the retry error to the original
-//     and forwards the combined NetworkError to finalErrorCh.
+// retryFailedBlockFetches contains the core retry logic for failed block fetches.
+// It reads NetworkError events from retryCh, attempts to re-fetch each block
+// via s.retry.Execute, and:
+//   - On success: sends the recovered NetworkBlock to recoveredCh (original error dropped).
+//   - On persistent failure: merges the retry error with the original and forwards
+//     the combined NetworkError to finalErrorCh.
 //
-// retryCh, recoveredCh, and finalErrorCh are global channels shared by all networks
-// and must be closed by the caller when shutting down.
+// retryCh, recoveredCh, and finalErrorCh are shared global channels; this function
+// does not close any of them.
 func (s *service) retryFailedBlockFetches(ctx context.Context, retryCh <-chan NetworkError, recoveredCh chan<- NetworkBlock, finalErrorCh chan<- NetworkError) {
-	go func() {
-		for netErr := range retryCh {
-			retryErr := s.retry.Execute(ctx, func() error {
-				client, ok := s.networks[netErr.Network]
-				if !ok {
-					return ErrNetworkNotRegistered
-				}
-
-				block, err := client.FetchBlockByHeight(ctx, netErr.Height)
-				if err == nil {
-					recoveredCh <- NetworkBlock{Network: netErr.Network, Block: block}
-				}
-
-				return err
-			})
-			if retryErr == nil {
-				// recovered successfully; drop original error
-				continue
+	for netErr := range retryCh {
+		retryErr := s.retry.Execute(ctx, func() error {
+			client, ok := s.networks[netErr.Network]
+			if !ok {
+				return ErrNetworkNotRegistered
 			}
 
-			// combine original and retry errors for reporting
-			netErr.Err = errors.Join(netErr.Err, retryErr)
-
-			select {
-			case <-ctx.Done():
-				return
-			case finalErrorCh <- netErr:
+			block, err := client.FetchBlockByHeight(ctx, netErr.Height)
+			if err == nil {
+				recoveredCh <- NetworkBlock{Network: netErr.Network, Block: block}
 			}
+
+			return err
+		})
+		if retryErr == nil {
+			continue // success: drop the event
 		}
-	}()
+
+		// persistent failure: attach retryErr and forward
+		netErr.Err = errors.Join(netErr.Err, retryErr)
+
+		select {
+		case <-ctx.Done():
+			return
+		case finalErrorCh <- netErr:
+		}
+	}
+}
+
+// StartRetryFailedBlockFetches launches a background goroutine that invokes
+// retryFailedBlockFetches. It returns immediately, leaving the retry loop
+// running until retryCh is closed or ctx is canceled.
+// retryCh, recoveredCh, and finalErrorCh must be closed by the caller.
+func (s *service) startRetryFailedBlockFetches(ctx context.Context, retryCh <-chan NetworkError, recoveredCh chan<- NetworkBlock, finalErrorCh chan<- NetworkError) {
+	go s.retryFailedBlockFetches(ctx, retryCh, recoveredCh, finalErrorCh)
 }
 
 // consumeSubscription reads BlockchainEvent values from eventsCh and routes them:
