@@ -1,6 +1,10 @@
 package watcher
 
-import "github.com/gabapcia/blockwatch/internal/pkg/types"
+import (
+	"context"
+
+	"github.com/gabapcia/blockwatch/internal/pkg/types"
+)
 
 // Transaction represents a basic blockchain transaction,
 // including its hash, sender address, and recipient address.
@@ -16,4 +20,8 @@ type Block struct {
 	Height       types.Hex     // Block height represented as a hex string
 	Hash         string        // Unique block hash
 	Transactions []Transaction // List of transactions contained in the block
+}
+
+func (s *service) process(ctx context.Context, events <-chan NetworkBlock) error {
+	return nil
 }
