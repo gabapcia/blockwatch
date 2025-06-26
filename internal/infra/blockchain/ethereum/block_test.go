@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gabapcia/blockwatch/internal/pkg/transport/jsonrpc/jsonrpctest"
+	jsonrpctest "github.com/gabapcia/blockwatch/internal/pkg/transport/jsonrpc/mocks"
 	"github.com/gabapcia/blockwatch/internal/pkg/types"
 	"github.com/gabapcia/blockwatch/internal/watcher"
 

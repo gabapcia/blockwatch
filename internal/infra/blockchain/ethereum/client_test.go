@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/gabapcia/blockwatch/internal/pkg/transport/jsonrpc/jsonrpctest"
+	jsonrpctest "github.com/gabapcia/blockwatch/internal/pkg/transport/jsonrpc/mocks"
 	"github.com/gabapcia/blockwatch/internal/watcher"
 )
 
