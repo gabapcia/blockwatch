@@ -1,11 +1,26 @@
-all: false
+_anchors:
+  default-config: &default-config
+    dir: '{{.InterfaceDir}}/mocks'
+    pkgname: 'mocks'
+    filename: '{{.InterfaceName | snakecase}}.go'
+    structname: '{{.InterfaceName}}'
+
+  in-package-config: &in-package-config
+    <<: *default-config
+    dir: '{{.InterfaceDir}}'
+    pkgname: '{{.SrcPackageName}}'
+    filename: '{{.InterfaceName | snakecase}}_mock_test.go'
+    structname: '{{.InterfaceName}}{{.Mock}}'
+
+all: true
+recursive: true
 force-file-write: true
+
 packages:
   github.com/gabapcia/blockwatch:
-    config:
-      all: true
-      recursive: true
-      dir: '{{.InterfaceDir}}/mocks'
-      filename: "{{.InterfaceName | snakecase}}.go"
-      pkgname: 'mocks'
-      structname: '{{.InterfaceName}}'
+    config: *default-config
+  github.com/gabapcia/blockwatch/internal/watcher:
+    config: *in-package-config
+    interfaces:
+      Service:
+        config: *default-config
