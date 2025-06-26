@@ -606,7 +606,7 @@ func TestService_startRetryFailedBlockFetches(t *testing.T) {
 	})
 }
 
-func TestService_consumeSubscription(t *testing.T) {
+func TestService_dispatchSubscriptionEvents(t *testing.T) {
 	t.Run("successful block events", func(t *testing.T) {
 		// Create service (no mocks needed for this function)
 		svc := &service{}
@@ -619,7 +619,7 @@ func TestService_consumeSubscription(t *testing.T) {
 		ctx := t.Context()
 
 		// Start consuming subscription
-		go svc.consumeSubscription(ctx, "ethereum", eventsCh, blocksCh, errorsCh)
+		go svc.dispatchSubscriptionEvents(ctx, "ethereum", eventsCh, blocksCh, errorsCh)
 
 		// Send successful block events
 		block1 := Block{
@@ -699,7 +699,7 @@ func TestService_consumeSubscription(t *testing.T) {
 		ctx := t.Context()
 
 		// Start consuming subscription
-		go svc.consumeSubscription(ctx, "ethereum", eventsCh, blocksCh, errorsCh)
+		go svc.dispatchSubscriptionEvents(ctx, "ethereum", eventsCh, blocksCh, errorsCh)
 
 		// Send error events
 		err1 := errors.New("fetch error 1")
@@ -765,7 +765,7 @@ func TestService_consumeSubscription(t *testing.T) {
 		ctx := t.Context()
 
 		// Start consuming subscription
-		go svc.consumeSubscription(ctx, "bitcoin", eventsCh, blocksCh, errorsCh)
+		go svc.dispatchSubscriptionEvents(ctx, "bitcoin", eventsCh, blocksCh, errorsCh)
 
 		// Send mixed events
 		successBlock := Block{
@@ -847,7 +847,7 @@ func TestService_consumeSubscription(t *testing.T) {
 		// Start consuming subscription
 		done := make(chan struct{})
 		go func() {
-			svc.consumeSubscription(ctx, "ethereum", eventsCh, blocksCh, errorsCh)
+			svc.dispatchSubscriptionEvents(ctx, "ethereum", eventsCh, blocksCh, errorsCh)
 			close(done)
 		}()
 
@@ -898,7 +898,7 @@ func TestService_consumeSubscription(t *testing.T) {
 		// Start consuming subscription
 		done := make(chan struct{})
 		go func() {
-			svc.consumeSubscription(ctx, "ethereum", eventsCh, blocksCh, errorsCh)
+			svc.dispatchSubscriptionEvents(ctx, "ethereum", eventsCh, blocksCh, errorsCh)
 			close(done)
 		}()
 
@@ -936,7 +936,7 @@ func TestService_consumeSubscription(t *testing.T) {
 		networkName := "polygon"
 
 		// Start consuming subscription
-		go svc.consumeSubscription(ctx, networkName, eventsCh, blocksCh, errorsCh)
+		go svc.dispatchSubscriptionEvents(ctx, networkName, eventsCh, blocksCh, errorsCh)
 
 		// Send events
 		eventsCh <- BlockchainEvent{
@@ -983,7 +983,7 @@ func TestService_consumeSubscription(t *testing.T) {
 	})
 }
 
-func TestService_startSubscriptions(t *testing.T) {
+func TestService_launchAllNetworkSubscriptions(t *testing.T) {
 	t.Run("successful subscription with no checkpoint", func(t *testing.T) {
 		// Setup mocks
 		checkpointMock := NewCheckpointStorageMock(t)
@@ -1013,7 +1013,7 @@ func TestService_startSubscriptions(t *testing.T) {
 		ctx := t.Context()
 
 		// Start subscriptions
-		err := svc.startSubscriptions(ctx, blocksCh, errorsCh)
+		err := svc.launchAllNetworkSubscriptions(ctx, blocksCh, errorsCh)
 
 		// Verify no error
 		assert.NoError(t, err)
@@ -1051,7 +1051,7 @@ func TestService_startSubscriptions(t *testing.T) {
 		ctx := t.Context()
 
 		// Start subscriptions
-		err := svc.startSubscriptions(ctx, blocksCh, errorsCh)
+		err := svc.launchAllNetworkSubscriptions(ctx, blocksCh, errorsCh)
 
 		// Verify no error
 		assert.NoError(t, err)
@@ -1097,7 +1097,7 @@ func TestService_startSubscriptions(t *testing.T) {
 		ctx := t.Context()
 
 		// Start subscriptions
-		err := svc.startSubscriptions(ctx, blocksCh, errorsCh)
+		err := svc.launchAllNetworkSubscriptions(ctx, blocksCh, errorsCh)
 
 		// Verify no error
 		assert.NoError(t, err)
@@ -1132,7 +1132,7 @@ func TestService_startSubscriptions(t *testing.T) {
 		ctx := t.Context()
 
 		// Start subscriptions
-		err := svc.startSubscriptions(ctx, blocksCh, errorsCh)
+		err := svc.launchAllNetworkSubscriptions(ctx, blocksCh, errorsCh)
 
 		// Verify error is returned
 		assert.Error(t, err)
@@ -1168,7 +1168,7 @@ func TestService_startSubscriptions(t *testing.T) {
 		ctx := t.Context()
 
 		// Start subscriptions
-		err := svc.startSubscriptions(ctx, blocksCh, errorsCh)
+		err := svc.launchAllNetworkSubscriptions(ctx, blocksCh, errorsCh)
 
 		// Verify error is returned
 		assert.Error(t, err)
@@ -1192,13 +1192,13 @@ func TestService_startSubscriptions(t *testing.T) {
 		ctx := t.Context()
 
 		// Start subscriptions
-		err := svc.startSubscriptions(ctx, blocksCh, errorsCh)
+		err := svc.launchAllNetworkSubscriptions(ctx, blocksCh, errorsCh)
 
 		// Verify no error (empty loop should complete successfully)
 		assert.NoError(t, err)
 	})
 
-	t.Run("integration with consumeSubscription", func(t *testing.T) {
+	t.Run("integration with dispatchSubscriptionEvents", func(t *testing.T) {
 		// Setup mocks
 		checkpointMock := NewCheckpointStorageMock(t)
 		blockchainMock := NewBlockchainMock(t)
@@ -1227,10 +1227,10 @@ func TestService_startSubscriptions(t *testing.T) {
 		ctx := t.Context()
 
 		// Start subscriptions
-		err := svc.startSubscriptions(ctx, blocksCh, errorsCh)
+		err := svc.launchAllNetworkSubscriptions(ctx, blocksCh, errorsCh)
 		assert.NoError(t, err)
 
-		// Send a test event to verify the consumeSubscription goroutine is working
+		// Send a test event to verify the dispatchSubscriptionEvents goroutine is working
 		testBlock := Block{
 			Height: types.Hex("0x123"),
 			Hash:   "test-hash",
@@ -1249,7 +1249,7 @@ func TestService_startSubscriptions(t *testing.T) {
 			assert.Equal(t, types.Hex("0x123"), receivedBlock.Block.Height)
 			assert.Equal(t, "test-hash", receivedBlock.Block.Hash)
 		case <-time.After(1 * time.Second):
-			t.Fatal("Expected block to be received from consumeSubscription goroutine")
+			t.Fatal("Expected block to be received from dispatchSubscriptionEvents goroutine")
 		}
 	})
 }

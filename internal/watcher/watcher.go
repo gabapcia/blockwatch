@@ -67,7 +67,7 @@ func (s *service) Start(ctx context.Context) error {
 	}
 
 	errorSubmissionCh := cmp.Or(recoveryCh, errorCh)
-	if err := s.startSubscriptions(ctx, processingCh, errorSubmissionCh); err != nil {
+	if err := s.launchAllNetworkSubscriptions(ctx, processingCh, errorSubmissionCh); err != nil {
 		return err
 	}
 

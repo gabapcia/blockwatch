@@ -82,12 +82,12 @@ func (s *service) startRetryFailedBlockFetches(ctx context.Context, retryCh <-ch
 	go s.retryFailedBlockFetches(ctx, retryCh, recoveredCh, finalErrorCh)
 }
 
-// consumeSubscription reads BlockchainEvent values from eventsCh and routes them:
+// dispatchSubscriptionEvents reads BlockchainEvent values from eventsCh and routes them:
 //   - On event.Err != nil, wraps the error and sends a NetworkError to errorsCh.
 //   - On success, sends a NetworkBlock to blocksCh.
 //
 // blocksCh and errorsCh are global shared channels and must be closed by the caller.
-func (s *service) consumeSubscription(ctx context.Context, network string, eventsCh <-chan BlockchainEvent, blocksCh chan<- NetworkBlock, errorsCh chan<- NetworkError) {
+func (s *service) dispatchSubscriptionEvents(ctx context.Context, network string, eventsCh <-chan BlockchainEvent, blocksCh chan<- NetworkBlock, errorsCh chan<- NetworkError) {
 	for event := range eventsCh {
 		if event.Err != nil {
 			errorsCh <- NetworkError{
@@ -106,16 +106,16 @@ func (s *service) consumeSubscription(ctx context.Context, network string, event
 	}
 }
 
-// startSubscriptions initializes and starts a subscription for each registered network.
+// launchAllNetworkSubscriptions initializes and starts a subscription for each registered network.
 // For each network it:
 //  1. Loads the last checkpointed block height (if any).
 //  2. If a checkpoint exists, increments the start height by 1.
 //  3. Calls Subscribe on the Blockchain client to obtain eventsCh.
-//  4. Launches consumeSubscription in its own goroutine to forward blocks and errors.
+//  4. Launches dispatchSubscriptionEvents in its own goroutine to forward blocks and errors.
 //
 // blocksCh and errorsCh are global shared channels and must be managed and closed by the caller.
 // Returns an error if any initial subscription or checkpoint load (aside from no-checkpoint) fails.
-func (s *service) startSubscriptions(ctx context.Context, blocksCh chan<- NetworkBlock, errorsCh chan<- NetworkError) error {
+func (s *service) launchAllNetworkSubscriptions(ctx context.Context, blocksCh chan<- NetworkBlock, errorsCh chan<- NetworkError) error {
 	for network, client := range s.networks {
 		startHeight, err := s.checkpointStorage.LoadLatestCheckpoint(ctx, network)
 		if err != nil && !errors.Is(err, ErrNoCheckpointFound) {
@@ -131,7 +131,7 @@ func (s *service) startSubscriptions(ctx context.Context, blocksCh chan<- Networ
 			return err
 		}
 
-		go s.consumeSubscription(ctx, network, eventsCh, blocksCh, errorsCh)
+		go s.dispatchSubscriptionEvents(ctx, network, eventsCh, blocksCh, errorsCh)
 	}
 
 	return nil
