@@ -1,6 +1,9 @@
 package logger
 
 import (
+	"bytes"
+	"os"
+	"os/exec"
 	"sync"
 	"testing"
 
@@ -227,6 +230,51 @@ func TestDebug(t *testing.T) {
 			Debug(ctx, msg)
 		})
 	})
+
+	t.Run("key-value pairs", func(t *testing.T) {
+		resetLogger()
+		err := Init(WithLevel("debug"))
+		require.NoError(t, err)
+
+		ctx := t.Context()
+		msg := "test debug message with context"
+
+		t.Run("single key-value pair", func(t *testing.T) {
+			keysAndValues := []any{"key1", "value1"}
+
+			// Test that Debug doesn't panic with key-value pairs
+			assert.NotPanics(t, func() {
+				Debug(ctx, msg, keysAndValues...)
+			})
+		})
+
+		t.Run("multiple key-value pairs", func(t *testing.T) {
+			keysAndValues := []any{"key1", "value1", "key2", 42, "key3", true}
+
+			// Test that Debug doesn't panic with multiple key-value pairs
+			assert.NotPanics(t, func() {
+				Debug(ctx, msg, keysAndValues...)
+			})
+		})
+
+		t.Run("no key-value pairs", func(t *testing.T) {
+			keysAndValues := []any{}
+
+			// Test that Debug doesn't panic with no key-value pairs
+			assert.NotPanics(t, func() {
+				Debug(ctx, msg, keysAndValues...)
+			})
+		})
+
+		t.Run("odd number of key-value pairs", func(t *testing.T) {
+			keysAndValues := []any{"key1", "value1", "key2"} // Missing value for key2
+
+			// Test that Debug doesn't panic with odd number of arguments
+			assert.NotPanics(t, func() {
+				Debug(ctx, msg, keysAndValues...)
+			})
+		})
+	})
 }
 
 func TestInfo(t *testing.T) {
@@ -271,6 +319,51 @@ func TestInfo(t *testing.T) {
 		// Test that Info doesn't panic even when log level is higher
 		assert.NotPanics(t, func() {
 			Info(ctx, msg)
+		})
+	})
+
+	t.Run("key-value pairs", func(t *testing.T) {
+		resetLogger()
+		err := Init(WithLevel("info"))
+		require.NoError(t, err)
+
+		ctx := t.Context()
+		msg := "test info message with context"
+
+		t.Run("single key-value pair", func(t *testing.T) {
+			keysAndValues := []any{"key1", "value1"}
+
+			// Test that Info doesn't panic with key-value pairs
+			assert.NotPanics(t, func() {
+				Info(ctx, msg, keysAndValues...)
+			})
+		})
+
+		t.Run("multiple key-value pairs", func(t *testing.T) {
+			keysAndValues := []any{"key1", "value1", "key2", 42, "key3", true}
+
+			// Test that Info doesn't panic with multiple key-value pairs
+			assert.NotPanics(t, func() {
+				Info(ctx, msg, keysAndValues...)
+			})
+		})
+
+		t.Run("no key-value pairs", func(t *testing.T) {
+			keysAndValues := []any{}
+
+			// Test that Info doesn't panic with no key-value pairs
+			assert.NotPanics(t, func() {
+				Info(ctx, msg, keysAndValues...)
+			})
+		})
+
+		t.Run("odd number of key-value pairs", func(t *testing.T) {
+			keysAndValues := []any{"key1", "value1", "key2"} // Missing value for key2
+
+			// Test that Info doesn't panic with odd number of arguments
+			assert.NotPanics(t, func() {
+				Info(ctx, msg, keysAndValues...)
+			})
 		})
 	})
 }
@@ -319,6 +412,51 @@ func TestWarn(t *testing.T) {
 			Warn(ctx, msg)
 		})
 	})
+
+	t.Run("key-value pairs", func(t *testing.T) {
+		resetLogger()
+		err := Init(WithLevel("warn"))
+		require.NoError(t, err)
+
+		ctx := t.Context()
+		msg := "test warn message with context"
+
+		t.Run("single key-value pair", func(t *testing.T) {
+			keysAndValues := []any{"key1", "value1"}
+
+			// Test that Warn doesn't panic with key-value pairs
+			assert.NotPanics(t, func() {
+				Warn(ctx, msg, keysAndValues...)
+			})
+		})
+
+		t.Run("multiple key-value pairs", func(t *testing.T) {
+			keysAndValues := []any{"key1", "value1", "key2", 42, "key3", true}
+
+			// Test that Warn doesn't panic with multiple key-value pairs
+			assert.NotPanics(t, func() {
+				Warn(ctx, msg, keysAndValues...)
+			})
+		})
+
+		t.Run("no key-value pairs", func(t *testing.T) {
+			keysAndValues := []any{}
+
+			// Test that Warn doesn't panic with no key-value pairs
+			assert.NotPanics(t, func() {
+				Warn(ctx, msg, keysAndValues...)
+			})
+		})
+
+		t.Run("odd number of key-value pairs", func(t *testing.T) {
+			keysAndValues := []any{"key1", "value1", "key2"} // Missing value for key2
+
+			// Test that Warn doesn't panic with odd number of arguments
+			assert.NotPanics(t, func() {
+				Warn(ctx, msg, keysAndValues...)
+			})
+		})
+	})
 }
 
 func TestError(t *testing.T) {
@@ -365,6 +503,51 @@ func TestError(t *testing.T) {
 			Error(ctx, msg)
 		})
 	})
+
+	t.Run("key-value pairs", func(t *testing.T) {
+		resetLogger()
+		err := Init(WithLevel("error"))
+		require.NoError(t, err)
+
+		ctx := t.Context()
+		msg := "test error message with context"
+
+		t.Run("single key-value pair", func(t *testing.T) {
+			keysAndValues := []any{"key1", "value1"}
+
+			// Test that Error doesn't panic with key-value pairs
+			assert.NotPanics(t, func() {
+				Error(ctx, msg, keysAndValues...)
+			})
+		})
+
+		t.Run("multiple key-value pairs", func(t *testing.T) {
+			keysAndValues := []any{"key1", "value1", "key2", 42, "key3", true}
+
+			// Test that Error doesn't panic with multiple key-value pairs
+			assert.NotPanics(t, func() {
+				Error(ctx, msg, keysAndValues...)
+			})
+		})
+
+		t.Run("no key-value pairs", func(t *testing.T) {
+			keysAndValues := []any{}
+
+			// Test that Error doesn't panic with no key-value pairs
+			assert.NotPanics(t, func() {
+				Error(ctx, msg, keysAndValues...)
+			})
+		})
+
+		t.Run("odd number of key-value pairs", func(t *testing.T) {
+			keysAndValues := []any{"key1", "value1", "key2"} // Missing value for key2
+
+			// Test that Error doesn't panic with odd number of arguments
+			assert.NotPanics(t, func() {
+				Error(ctx, msg, keysAndValues...)
+			})
+		})
+	})
 }
 
 func TestPanic(t *testing.T) {
@@ -395,49 +578,192 @@ func TestPanic(t *testing.T) {
 			Panic(ctx, msg, key, value)
 		}, "Panic() should panic")
 	})
+
+	t.Run("key-value pairs", func(t *testing.T) {
+		resetLogger()
+		err := Init(WithLevel("panic"))
+		require.NoError(t, err)
+
+		ctx := t.Context()
+		msg := "test panic message with context"
+
+		t.Run("single key-value pair", func(t *testing.T) {
+			keysAndValues := []any{"key1", "value1"}
+
+			// Test that Panic panics with key-value pairs
+			assert.Panics(t, func() {
+				Panic(ctx, msg, keysAndValues...)
+			})
+		})
+
+		t.Run("multiple key-value pairs", func(t *testing.T) {
+			keysAndValues := []any{"key1", "value1", "key2", 42, "key3", true}
+
+			// Test that Panic panics with multiple key-value pairs
+			assert.Panics(t, func() {
+				Panic(ctx, msg, keysAndValues...)
+			})
+		})
+
+		t.Run("no key-value pairs", func(t *testing.T) {
+			keysAndValues := []any{}
+
+			// Test that Panic panics with no key-value pairs
+			assert.Panics(t, func() {
+				Panic(ctx, msg, keysAndValues...)
+			})
+		})
+
+		t.Run("odd number of key-value pairs", func(t *testing.T) {
+			keysAndValues := []any{"key1", "value1", "key2"} // Missing value for key2
+
+			// Test that Panic panics with odd number of arguments
+			assert.Panics(t, func() {
+				Panic(ctx, msg, keysAndValues...)
+			})
+		})
+	})
 }
 
-func TestLogWithKeyValuePairs(t *testing.T) {
-	resetLogger()
-	err := Init(WithLevel("debug"))
-	require.NoError(t, err)
+func TestFatal(t *testing.T) {
+	t.Run("fatal exits with code 1", func(t *testing.T) {
+		// This subprocess will execute the Fatal call.
+		if os.Getenv("TEST_FATAL_SUBPROCESS") == "1" {
+			// initialize logger (so logger.Fatal is wired up)
+			_ = Init(WithLevel("debug"))
+			// this will call os.Exit(1)
+			Fatal(t.Context(), "fatal error for test")
+			return
+		}
 
-	ctx := t.Context()
-	msg := "test message with context"
+		// Build a command that re-runs this test in a subprocess.
+		cmd := exec.Command(os.Args[0], "-test.run=TestFatal")
+		cmd.Env = append(os.Environ(), "TEST_FATAL_SUBPROCESS=1")
 
-	t.Run("single key-value pair", func(t *testing.T) {
-		keysAndValues := []any{"key1", "value1"}
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
 
-		// Test that Info doesn't panic with key-value pairs
-		assert.NotPanics(t, func() {
-			Info(ctx, msg, keysAndValues...)
-		})
+		err := cmd.Run()
+		exitErr, ok := err.(*exec.ExitError)
+		assert.True(t, ok, "the subprocess should exit with a non-zero status")
+		assert.Equal(t, 1, exitErr.ExitCode(), "logger.Fatal should terminate with exit code 1")
+
+		// Assert that the log message appears on stdout (logger writes to stdout):
+		assert.Contains(t, stdout.String(), `"level":"fatal"`)
 	})
 
-	t.Run("multiple key-value pairs", func(t *testing.T) {
-		keysAndValues := []any{"key1", "value1", "key2", 42, "key3", true}
+	t.Run("key-value pairs", func(t *testing.T) {
+		t.Run("single key-value pair", func(t *testing.T) {
+			// This subprocess will execute the Fatal call.
+			if os.Getenv("TEST_FATAL_SINGLE_KV_SUBPROCESS") == "1" {
+				// initialize logger (so logger.Fatal is wired up)
+				_ = Init(WithLevel("debug"))
+				keysAndValues := []any{"key1", "value1"}
+				// this will call os.Exit(1)
+				Fatal(t.Context(), "fatal error for test", keysAndValues...)
+				return
+			}
 
-		// Test that Info doesn't panic with multiple key-value pairs
-		assert.NotPanics(t, func() {
-			Info(ctx, msg, keysAndValues...)
+			// Build a command that re-runs this test in a subprocess.
+			cmd := exec.Command(os.Args[0], "-test.run=TestFatal")
+			cmd.Env = append(os.Environ(), "TEST_FATAL_SINGLE_KV_SUBPROCESS=1")
+
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+
+			err := cmd.Run()
+			exitErr, ok := err.(*exec.ExitError)
+			assert.True(t, ok, "the subprocess should exit with a non-zero status")
+			assert.Equal(t, 1, exitErr.ExitCode(), "logger.Fatal should terminate with exit code 1")
+
+			// Assert that the log message appears on stdout:
+			assert.Contains(t, stdout.String(), `"level":"fatal"`)
 		})
-	})
 
-	t.Run("no key-value pairs", func(t *testing.T) {
-		keysAndValues := []any{}
+		t.Run("multiple key-value pairs", func(t *testing.T) {
+			// This subprocess will execute the Fatal call.
+			if os.Getenv("TEST_FATAL_MULTIPLE_KV_SUBPROCESS") == "1" {
+				// initialize logger (so logger.Fatal is wired up)
+				_ = Init(WithLevel("debug"))
+				keysAndValues := []any{"key1", "value1", "key2", 42, "key3", true}
+				// this will call os.Exit(1)
+				Fatal(t.Context(), "fatal error for test", keysAndValues...)
+				return
+			}
 
-		// Test that Info doesn't panic with no key-value pairs
-		assert.NotPanics(t, func() {
-			Info(ctx, msg, keysAndValues...)
+			// Build a command that re-runs this test in a subprocess.
+			cmd := exec.Command(os.Args[0], "-test.run=TestFatal")
+			cmd.Env = append(os.Environ(), "TEST_FATAL_MULTIPLE_KV_SUBPROCESS=1")
+
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+
+			err := cmd.Run()
+			exitErr, ok := err.(*exec.ExitError)
+			assert.True(t, ok, "the subprocess should exit with a non-zero status")
+			assert.Equal(t, 1, exitErr.ExitCode(), "logger.Fatal should terminate with exit code 1")
+
+			// Assert that the log message appears on stdout:
+			assert.Contains(t, stdout.String(), `"level":"fatal"`)
 		})
-	})
 
-	t.Run("odd number of key-value pairs", func(t *testing.T) {
-		keysAndValues := []any{"key1", "value1", "key2"} // Missing value for key2
+		t.Run("no key-value pairs", func(t *testing.T) {
+			// This subprocess will execute the Fatal call.
+			if os.Getenv("TEST_FATAL_NO_KV_SUBPROCESS") == "1" {
+				// initialize logger (so logger.Fatal is wired up)
+				_ = Init(WithLevel("debug"))
+				keysAndValues := []any{}
+				// this will call os.Exit(1)
+				Fatal(t.Context(), "fatal error for test", keysAndValues...)
+				return
+			}
 
-		// Test that Info doesn't panic with odd number of arguments
-		assert.NotPanics(t, func() {
-			Info(ctx, msg, keysAndValues...)
+			// Build a command that re-runs this test in a subprocess.
+			cmd := exec.Command(os.Args[0], "-test.run=TestFatal")
+			cmd.Env = append(os.Environ(), "TEST_FATAL_NO_KV_SUBPROCESS=1")
+
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+
+			err := cmd.Run()
+			exitErr, ok := err.(*exec.ExitError)
+			assert.True(t, ok, "the subprocess should exit with a non-zero status")
+			assert.Equal(t, 1, exitErr.ExitCode(), "logger.Fatal should terminate with exit code 1")
+
+			// Assert that the log message appears on stdout:
+			assert.Contains(t, stdout.String(), `"level":"fatal"`)
+		})
+
+		t.Run("odd number of key-value pairs", func(t *testing.T) {
+			// This subprocess will execute the Fatal call.
+			if os.Getenv("TEST_FATAL_ODD_KV_SUBPROCESS") == "1" {
+				// initialize logger (so logger.Fatal is wired up)
+				_ = Init(WithLevel("debug"))
+				keysAndValues := []any{"key1", "value1", "key2"} // Missing value for key2
+				// this will call os.Exit(1)
+				Fatal(t.Context(), "fatal error for test", keysAndValues...)
+				return
+			}
+
+			// Build a command that re-runs this test in a subprocess.
+			cmd := exec.Command(os.Args[0], "-test.run=TestFatal")
+			cmd.Env = append(os.Environ(), "TEST_FATAL_ODD_KV_SUBPROCESS=1")
+
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+
+			err := cmd.Run()
+			exitErr, ok := err.(*exec.ExitError)
+			assert.True(t, ok, "the subprocess should exit with a non-zero status")
+			assert.Equal(t, 1, exitErr.ExitCode(), "logger.Fatal should terminate with exit code 1")
+
+			// Assert that the log message appears on stdout:
+			assert.Contains(t, stdout.String(), `"level":"fatal"`)
 		})
 	})
 }
