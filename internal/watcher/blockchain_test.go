@@ -47,9 +47,9 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 			Return(expectedBlock, nil)
 
 		// Create channels
-		retryCh := make(chan NetworkError, 1)
-		recoveredCh := make(chan NetworkBlock, 1)
-		finalErrorCh := make(chan NetworkError, 1)
+		retryCh := make(chan BlockDispatchFailure, 1)
+		recoveredCh := make(chan blockProcessingState, 1)
+		finalErrorCh := make(chan BlockDispatchFailure, 1)
 
 		// Use test context
 		ctx := t.Context()
@@ -58,7 +58,7 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		go svc.retryFailedBlockFetches(ctx, retryCh, recoveredCh, finalErrorCh)
 
 		// Send the network error to retry channel
-		inputError := NetworkError{
+		inputError := BlockDispatchFailure{
 			Network: "ethereum",
 			Height:  types.Hex("0x123"),
 			Err:     errors.New("original fetch error"),
@@ -69,10 +69,10 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		// Wait for recovered block
 		select {
 		case recovered := <-recoveredCh:
-			assert.Equal(t, "ethereum", recovered.Network)
-			assert.Equal(t, types.Hex("0x123"), recovered.Block.Height)
-			assert.Equal(t, "block-hash-123", recovered.Block.Hash)
-			assert.Equal(t, []Transaction{{Hash: "tx1", From: "addr1", To: "addr2"}}, recovered.Block.Transactions)
+			assert.Equal(t, "ethereum", recovered.network)
+			assert.Equal(t, types.Hex("0x123"), recovered.block.Height)
+			assert.Equal(t, "block-hash-123", recovered.block.Hash)
+			assert.Equal(t, []Transaction{{Hash: "tx1", From: "addr1", To: "addr2"}}, recovered.block.Transactions)
 		case <-time.After(2 * time.Second):
 			t.Fatal("Expected recovered block to be sent")
 		}
@@ -104,9 +104,9 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 			}).Return(ErrNetworkNotRegistered)
 
 		// Create channels
-		retryCh := make(chan NetworkError, 1)
-		recoveredCh := make(chan NetworkBlock, 1)
-		finalErrorCh := make(chan NetworkError, 1)
+		retryCh := make(chan BlockDispatchFailure, 1)
+		recoveredCh := make(chan blockProcessingState, 1)
+		finalErrorCh := make(chan BlockDispatchFailure, 1)
 
 		// Use test context
 		ctx := t.Context()
@@ -115,7 +115,7 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		go svc.retryFailedBlockFetches(ctx, retryCh, recoveredCh, finalErrorCh)
 
 		// Send network error for unknown network
-		inputError := NetworkError{
+		inputError := BlockDispatchFailure{
 			Network: "unknown-network",
 			Height:  types.Hex("0x456"),
 			Err:     errors.New("original fetch error"),
@@ -170,9 +170,9 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 			Return(Block{}, persistentErr)
 
 		// Create channels
-		retryCh := make(chan NetworkError, 1)
-		recoveredCh := make(chan NetworkBlock, 1)
-		finalErrorCh := make(chan NetworkError, 1)
+		retryCh := make(chan BlockDispatchFailure, 1)
+		recoveredCh := make(chan blockProcessingState, 1)
+		finalErrorCh := make(chan BlockDispatchFailure, 1)
 
 		// Use test context
 		ctx := t.Context()
@@ -181,7 +181,7 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		go svc.retryFailedBlockFetches(ctx, retryCh, recoveredCh, finalErrorCh)
 
 		// Send network error
-		inputError := NetworkError{
+		inputError := BlockDispatchFailure{
 			Network: "ethereum",
 			Height:  types.Hex("0x789"),
 			Err:     errors.New("original fetch error"),
@@ -226,9 +226,9 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 			Return(context.Canceled)
 
 		// Create channels
-		retryCh := make(chan NetworkError, 1)
-		recoveredCh := make(chan NetworkBlock, 1)
-		finalErrorCh := make(chan NetworkError, 1)
+		retryCh := make(chan BlockDispatchFailure, 1)
+		recoveredCh := make(chan blockProcessingState, 1)
+		finalErrorCh := make(chan BlockDispatchFailure, 1)
 
 		// Use test context
 		ctx := t.Context()
@@ -237,7 +237,7 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		go svc.retryFailedBlockFetches(ctx, retryCh, recoveredCh, finalErrorCh)
 
 		// Send network error
-		inputError := NetworkError{
+		inputError := BlockDispatchFailure{
 			Network: "ethereum",
 			Height:  types.Hex("0xabc"),
 			Err:     errors.New("original fetch error"),
@@ -298,9 +298,9 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 			Return(Block{}, errors.New("persistent error")).Once()
 
 		// Create channels
-		retryCh := make(chan NetworkError, 2)
-		recoveredCh := make(chan NetworkBlock, 2)
-		finalErrorCh := make(chan NetworkError, 2)
+		retryCh := make(chan BlockDispatchFailure, 2)
+		recoveredCh := make(chan blockProcessingState, 2)
+		finalErrorCh := make(chan BlockDispatchFailure, 2)
 
 		ctx := t.Context()
 
@@ -308,12 +308,12 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		go svc.retryFailedBlockFetches(ctx, retryCh, recoveredCh, finalErrorCh)
 
 		// Send two network errors
-		retryCh <- NetworkError{
+		retryCh <- BlockDispatchFailure{
 			Network: "ethereum",
 			Height:  types.Hex("0x100"),
 			Err:     errors.New("error 1"),
 		}
-		retryCh <- NetworkError{
+		retryCh <- BlockDispatchFailure{
 			Network: "ethereum",
 			Height:  types.Hex("0x200"),
 			Err:     errors.New("error 2"),
@@ -321,8 +321,8 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		close(retryCh)
 
 		// Collect results
-		var recoveredBlocks []NetworkBlock
-		var finalErrors []NetworkError
+		var recoveredBlocks []blockProcessingState
+		var finalErrors []BlockDispatchFailure
 
 		timeout := time.After(3 * time.Second)
 		expectedResults := 2
@@ -346,9 +346,9 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		require.Len(t, finalErrors, 1, "Expected one final error")
 
 		// Check recovered block
-		assert.Equal(t, "ethereum", recoveredBlocks[0].Network)
-		assert.Equal(t, types.Hex("0x100"), recoveredBlocks[0].Block.Height)
-		assert.Equal(t, "hash100", recoveredBlocks[0].Block.Hash)
+		assert.Equal(t, "ethereum", recoveredBlocks[0].network)
+		assert.Equal(t, types.Hex("0x100"), recoveredBlocks[0].block.Height)
+		assert.Equal(t, "hash100", recoveredBlocks[0].block.Hash)
 
 		// Check final error
 		assert.Equal(t, "ethereum", finalErrors[0].Network)
@@ -368,9 +368,9 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		}
 
 		// Create channels
-		retryCh := make(chan NetworkError)
-		recoveredCh := make(chan NetworkBlock, 1)
-		finalErrorCh := make(chan NetworkError, 1)
+		retryCh := make(chan BlockDispatchFailure)
+		recoveredCh := make(chan blockProcessingState, 1)
+		finalErrorCh := make(chan BlockDispatchFailure, 1)
 
 		ctx := t.Context()
 
@@ -418,9 +418,9 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 			Return(errors.New("retry failed"))
 
 		// Create channels with no buffer to simulate blocking
-		retryCh := make(chan NetworkError, 1)
-		recoveredCh := make(chan NetworkBlock)
-		finalErrorCh := make(chan NetworkError) // No buffer - will block
+		retryCh := make(chan BlockDispatchFailure, 1)
+		recoveredCh := make(chan blockProcessingState)
+		finalErrorCh := make(chan BlockDispatchFailure) // No buffer - will block
 
 		// Create context that will be canceled
 		ctx, cancel := context.WithCancel(t.Context())
@@ -433,7 +433,7 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		}()
 
 		// Send network error
-		retryCh <- NetworkError{
+		retryCh <- BlockDispatchFailure{
 			Network: "unknown",
 			Height:  types.Hex("0x123"),
 			Err:     errors.New("original error"),
@@ -489,9 +489,9 @@ func TestService_startRetryFailedBlockFetches(t *testing.T) {
 			Return(expectedBlock, nil)
 
 		// Create channels
-		retryCh := make(chan NetworkError, 1)
-		recoveredCh := make(chan NetworkBlock, 1)
-		finalErrorCh := make(chan NetworkError, 1)
+		retryCh := make(chan BlockDispatchFailure, 1)
+		recoveredCh := make(chan blockProcessingState, 1)
+		finalErrorCh := make(chan BlockDispatchFailure, 1)
 
 		ctx := t.Context()
 
@@ -499,7 +499,7 @@ func TestService_startRetryFailedBlockFetches(t *testing.T) {
 		svc.startRetryFailedBlockFetches(ctx, retryCh, recoveredCh, finalErrorCh)
 
 		// Send network error
-		inputError := NetworkError{
+		inputError := BlockDispatchFailure{
 			Network: "ethereum",
 			Height:  types.Hex("0x123"),
 			Err:     errors.New("original error"),
@@ -510,9 +510,9 @@ func TestService_startRetryFailedBlockFetches(t *testing.T) {
 		// Verify that the goroutine processes the error
 		select {
 		case recovered := <-recoveredCh:
-			assert.Equal(t, "ethereum", recovered.Network)
-			assert.Equal(t, types.Hex("0x123"), recovered.Block.Height)
-			assert.Equal(t, "test-hash", recovered.Block.Hash)
+			assert.Equal(t, "ethereum", recovered.network)
+			assert.Equal(t, types.Hex("0x123"), recovered.block.Height)
+			assert.Equal(t, "test-hash", recovered.block.Hash)
 		case <-time.After(2 * time.Second):
 			t.Fatal("Expected recovered block to be sent")
 		}
@@ -537,9 +537,9 @@ func TestService_startRetryFailedBlockFetches(t *testing.T) {
 		}
 
 		// Create channels
-		retryCh := make(chan NetworkError)
-		recoveredCh := make(chan NetworkBlock)
-		finalErrorCh := make(chan NetworkError)
+		retryCh := make(chan BlockDispatchFailure)
+		recoveredCh := make(chan blockProcessingState)
+		finalErrorCh := make(chan BlockDispatchFailure)
 
 		ctx := t.Context()
 
@@ -572,9 +572,9 @@ func TestService_startRetryFailedBlockFetches(t *testing.T) {
 			Return(errors.New("retry failed"))
 
 		// Create channels
-		retryCh := make(chan NetworkError, 1)
-		recoveredCh := make(chan NetworkBlock)
-		finalErrorCh := make(chan NetworkError, 1)
+		retryCh := make(chan BlockDispatchFailure, 1)
+		recoveredCh := make(chan blockProcessingState)
+		finalErrorCh := make(chan BlockDispatchFailure, 1)
 
 		// Create context that will be canceled
 		ctx, cancel := context.WithCancel(t.Context())
@@ -583,7 +583,7 @@ func TestService_startRetryFailedBlockFetches(t *testing.T) {
 		svc.startRetryFailedBlockFetches(ctx, retryCh, recoveredCh, finalErrorCh)
 
 		// Send network error
-		retryCh <- NetworkError{
+		retryCh <- BlockDispatchFailure{
 			Network: "unknown",
 			Height:  types.Hex("0x123"),
 			Err:     errors.New("original error"),
@@ -613,8 +613,8 @@ func TestService_dispatchSubscriptionEvents(t *testing.T) {
 
 		// Create channels
 		eventsCh := make(chan BlockchainEvent, 2)
-		blocksCh := make(chan NetworkBlock, 2)
-		errorsCh := make(chan NetworkError, 2)
+		blocksCh := make(chan blockProcessingState, 2)
+		errorsCh := make(chan BlockDispatchFailure, 2)
 
 		ctx := t.Context()
 
@@ -650,7 +650,7 @@ func TestService_dispatchSubscriptionEvents(t *testing.T) {
 		close(eventsCh)
 
 		// Collect results
-		var receivedBlocks []NetworkBlock
+		var receivedBlocks []blockProcessingState
 		timeout := time.After(2 * time.Second)
 		expectedBlocks := 2
 
@@ -667,16 +667,16 @@ func TestService_dispatchSubscriptionEvents(t *testing.T) {
 		require.Len(t, receivedBlocks, 2, "Expected two blocks")
 
 		// Check first block
-		assert.Equal(t, "ethereum", receivedBlocks[0].Network)
-		assert.Equal(t, types.Hex("0x100"), receivedBlocks[0].Block.Height)
-		assert.Equal(t, "hash100", receivedBlocks[0].Block.Hash)
-		assert.Equal(t, []Transaction{{Hash: "tx1", From: "addr1", To: "addr2"}}, receivedBlocks[0].Block.Transactions)
+		assert.Equal(t, "ethereum", receivedBlocks[0].network)
+		assert.Equal(t, types.Hex("0x100"), receivedBlocks[0].block.Height)
+		assert.Equal(t, "hash100", receivedBlocks[0].block.Hash)
+		assert.Equal(t, []Transaction{{Hash: "tx1", From: "addr1", To: "addr2"}}, receivedBlocks[0].block.Transactions)
 
 		// Check second block
-		assert.Equal(t, "ethereum", receivedBlocks[1].Network)
-		assert.Equal(t, types.Hex("0x101"), receivedBlocks[1].Block.Height)
-		assert.Equal(t, "hash101", receivedBlocks[1].Block.Hash)
-		assert.Equal(t, []Transaction{{Hash: "tx2", From: "addr3", To: "addr4"}}, receivedBlocks[1].Block.Transactions)
+		assert.Equal(t, "ethereum", receivedBlocks[1].network)
+		assert.Equal(t, types.Hex("0x101"), receivedBlocks[1].block.Height)
+		assert.Equal(t, "hash101", receivedBlocks[1].block.Hash)
+		assert.Equal(t, []Transaction{{Hash: "tx2", From: "addr3", To: "addr4"}}, receivedBlocks[1].block.Transactions)
 
 		// Verify no errors were sent
 		select {
@@ -693,8 +693,8 @@ func TestService_dispatchSubscriptionEvents(t *testing.T) {
 
 		// Create channels
 		eventsCh := make(chan BlockchainEvent, 2)
-		blocksCh := make(chan NetworkBlock, 2)
-		errorsCh := make(chan NetworkError, 2)
+		blocksCh := make(chan blockProcessingState, 2)
+		errorsCh := make(chan BlockDispatchFailure, 2)
 
 		ctx := t.Context()
 
@@ -718,7 +718,7 @@ func TestService_dispatchSubscriptionEvents(t *testing.T) {
 		close(eventsCh)
 
 		// Collect results
-		var receivedErrors []NetworkError
+		var receivedErrors []BlockDispatchFailure
 		timeout := time.After(2 * time.Second)
 		expectedErrors := 2
 
@@ -759,8 +759,8 @@ func TestService_dispatchSubscriptionEvents(t *testing.T) {
 
 		// Create channels
 		eventsCh := make(chan BlockchainEvent, 3)
-		blocksCh := make(chan NetworkBlock, 3)
-		errorsCh := make(chan NetworkError, 3)
+		blocksCh := make(chan blockProcessingState, 3)
+		errorsCh := make(chan BlockDispatchFailure, 3)
 
 		ctx := t.Context()
 
@@ -794,8 +794,8 @@ func TestService_dispatchSubscriptionEvents(t *testing.T) {
 		close(eventsCh)
 
 		// Collect results
-		var receivedBlocks []NetworkBlock
-		var receivedErrors []NetworkError
+		var receivedBlocks []blockProcessingState
+		var receivedErrors []BlockDispatchFailure
 		timeout := time.After(2 * time.Second)
 		expectedTotal := 3
 		receivedTotal := 0
@@ -818,13 +818,13 @@ func TestService_dispatchSubscriptionEvents(t *testing.T) {
 		require.Len(t, receivedErrors, 1, "Expected one error")
 
 		// Check successful blocks
-		assert.Equal(t, "bitcoin", receivedBlocks[0].Network)
-		assert.Equal(t, types.Hex("0x300"), receivedBlocks[0].Block.Height)
-		assert.Equal(t, "hash300", receivedBlocks[0].Block.Hash)
+		assert.Equal(t, "bitcoin", receivedBlocks[0].network)
+		assert.Equal(t, types.Hex("0x300"), receivedBlocks[0].block.Height)
+		assert.Equal(t, "hash300", receivedBlocks[0].block.Hash)
 
-		assert.Equal(t, "bitcoin", receivedBlocks[1].Network)
-		assert.Equal(t, types.Hex("0x302"), receivedBlocks[1].Block.Height)
-		assert.Equal(t, "hash302", receivedBlocks[1].Block.Hash)
+		assert.Equal(t, "bitcoin", receivedBlocks[1].network)
+		assert.Equal(t, types.Hex("0x302"), receivedBlocks[1].block.Height)
+		assert.Equal(t, "hash302", receivedBlocks[1].block.Hash)
 
 		// Check error
 		assert.Equal(t, "bitcoin", receivedErrors[0].Network)
@@ -838,8 +838,8 @@ func TestService_dispatchSubscriptionEvents(t *testing.T) {
 
 		// Create channels
 		eventsCh := make(chan BlockchainEvent, 2)
-		blocksCh := make(chan NetworkBlock) // No buffer to simulate blocking
-		errorsCh := make(chan NetworkError, 2)
+		blocksCh := make(chan blockProcessingState) // No buffer to simulate blocking
+		errorsCh := make(chan BlockDispatchFailure, 2)
 
 		// Create context that will be canceled
 		ctx, cancel := context.WithCancel(t.Context())
@@ -887,8 +887,8 @@ func TestService_dispatchSubscriptionEvents(t *testing.T) {
 
 		// Create channels
 		eventsCh := make(chan BlockchainEvent)
-		blocksCh := make(chan NetworkBlock, 1)
-		errorsCh := make(chan NetworkError, 1)
+		blocksCh := make(chan blockProcessingState, 1)
+		errorsCh := make(chan BlockDispatchFailure, 1)
 
 		ctx := t.Context()
 
@@ -927,8 +927,8 @@ func TestService_dispatchSubscriptionEvents(t *testing.T) {
 
 		// Create channels
 		eventsCh := make(chan BlockchainEvent, 2)
-		blocksCh := make(chan NetworkBlock, 2)
-		errorsCh := make(chan NetworkError, 2)
+		blocksCh := make(chan blockProcessingState, 2)
+		errorsCh := make(chan BlockDispatchFailure, 2)
 
 		ctx := t.Context()
 
@@ -955,8 +955,8 @@ func TestService_dispatchSubscriptionEvents(t *testing.T) {
 		close(eventsCh)
 
 		// Collect results
-		var receivedBlocks []NetworkBlock
-		var receivedErrors []NetworkError
+		var receivedBlocks []blockProcessingState
+		var receivedErrors []BlockDispatchFailure
 		timeout := time.After(2 * time.Second)
 		expectedTotal := 2
 		receivedTotal := 0
@@ -978,7 +978,7 @@ func TestService_dispatchSubscriptionEvents(t *testing.T) {
 		require.Len(t, receivedBlocks, 1)
 		require.Len(t, receivedErrors, 1)
 
-		assert.Equal(t, networkName, receivedBlocks[0].Network)
+		assert.Equal(t, networkName, receivedBlocks[0].network)
 		assert.Equal(t, networkName, receivedErrors[0].Network)
 	})
 }
@@ -1007,8 +1007,8 @@ func TestService_launchAllNetworkSubscriptions(t *testing.T) {
 			Return((<-chan BlockchainEvent)(eventsCh), nil)
 
 		// Create channels
-		blocksCh := make(chan NetworkBlock, 1)
-		errorsCh := make(chan NetworkError, 1)
+		blocksCh := make(chan blockProcessingState, 1)
+		errorsCh := make(chan BlockDispatchFailure, 1)
 
 		ctx := t.Context()
 
@@ -1045,8 +1045,8 @@ func TestService_launchAllNetworkSubscriptions(t *testing.T) {
 			Return((<-chan BlockchainEvent)(eventsCh), nil)
 
 		// Create channels
-		blocksCh := make(chan NetworkBlock, 1)
-		errorsCh := make(chan NetworkError, 1)
+		blocksCh := make(chan blockProcessingState, 1)
+		errorsCh := make(chan BlockDispatchFailure, 1)
 
 		ctx := t.Context()
 
@@ -1091,8 +1091,8 @@ func TestService_launchAllNetworkSubscriptions(t *testing.T) {
 			Return((<-chan BlockchainEvent)(bitcoinEventsCh), nil)
 
 		// Create channels
-		blocksCh := make(chan NetworkBlock, 2)
-		errorsCh := make(chan NetworkError, 2)
+		blocksCh := make(chan blockProcessingState, 2)
+		errorsCh := make(chan BlockDispatchFailure, 2)
 
 		ctx := t.Context()
 
@@ -1126,8 +1126,8 @@ func TestService_launchAllNetworkSubscriptions(t *testing.T) {
 			Return(types.Hex(""), checkpointError)
 
 		// Create channels
-		blocksCh := make(chan NetworkBlock, 1)
-		errorsCh := make(chan NetworkError, 1)
+		blocksCh := make(chan blockProcessingState, 1)
+		errorsCh := make(chan BlockDispatchFailure, 1)
 
 		ctx := t.Context()
 
@@ -1162,8 +1162,8 @@ func TestService_launchAllNetworkSubscriptions(t *testing.T) {
 			Return((<-chan BlockchainEvent)(nil), subscriptionError)
 
 		// Create channels
-		blocksCh := make(chan NetworkBlock, 1)
-		errorsCh := make(chan NetworkError, 1)
+		blocksCh := make(chan blockProcessingState, 1)
+		errorsCh := make(chan BlockDispatchFailure, 1)
 
 		ctx := t.Context()
 
@@ -1186,8 +1186,8 @@ func TestService_launchAllNetworkSubscriptions(t *testing.T) {
 		}
 
 		// Create channels
-		blocksCh := make(chan NetworkBlock, 1)
-		errorsCh := make(chan NetworkError, 1)
+		blocksCh := make(chan blockProcessingState, 1)
+		errorsCh := make(chan BlockDispatchFailure, 1)
 
 		ctx := t.Context()
 
@@ -1221,8 +1221,8 @@ func TestService_launchAllNetworkSubscriptions(t *testing.T) {
 			Return((<-chan BlockchainEvent)(eventsCh), nil)
 
 		// Create channels
-		blocksCh := make(chan NetworkBlock, 1)
-		errorsCh := make(chan NetworkError, 1)
+		blocksCh := make(chan blockProcessingState, 1)
+		errorsCh := make(chan BlockDispatchFailure, 1)
 
 		ctx := t.Context()
 
@@ -1245,9 +1245,9 @@ func TestService_launchAllNetworkSubscriptions(t *testing.T) {
 		// Verify the block is received
 		select {
 		case receivedBlock := <-blocksCh:
-			assert.Equal(t, "ethereum", receivedBlock.Network)
-			assert.Equal(t, types.Hex("0x123"), receivedBlock.Block.Height)
-			assert.Equal(t, "test-hash", receivedBlock.Block.Hash)
+			assert.Equal(t, "ethereum", receivedBlock.network)
+			assert.Equal(t, types.Hex("0x123"), receivedBlock.block.Height)
+			assert.Equal(t, "test-hash", receivedBlock.block.Hash)
 		case <-time.After(1 * time.Second):
 			t.Fatal("Expected block to be received from dispatchSubscriptionEvents goroutine")
 		}

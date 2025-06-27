@@ -35,16 +35,28 @@ type Blockchain interface {
 	Subscribe(ctx context.Context, fromHeight types.Hex) (<-chan BlockchainEvent, error)
 }
 
+// BlockDispatchFailure represents a failure that occurred when attempting to dispatch
+// a block for processing. This typically happens when a BlockchainEvent contains an error.
+//
+// The error may be a single failure or a chain of multiple errors joined using errors.Join,
+// especially if retries were attempted. Callers may use errors.Unwrap or errors.As to inspect
+// the underlying errors.
+type BlockDispatchFailure struct {
+	Network string    // name of the blockchain network (e.g., "ethereum")
+	Height  types.Hex // block height that failed to be dispatched
+	Err     error     // one or more errors encountered; may be joined via errors.Join
+}
+
 // retryFailedBlockFetches contains the core retry logic for failed block fetches.
-// It reads NetworkError events from retryCh, attempts to re-fetch each block
+// It reads BlockDispatchFailure events from retryCh, attempts to re-fetch each block
 // via s.retry.Execute, and:
-//   - On success: sends the recovered NetworkBlock to recoveredCh (original error dropped).
+//   - On success: sends the recovered blockProcessingState to recoveredCh (original error dropped).
 //   - On persistent failure: merges the retry error with the original and forwards
-//     the combined NetworkError to finalErrorCh.
+//     the combined BlockDispatchFailure to finalErrorCh.
 //
 // retryCh, recoveredCh, and finalErrorCh are shared global channels; this function
 // does not close any of them.
-func (s *service) retryFailedBlockFetches(ctx context.Context, retryCh <-chan NetworkError, recoveredCh chan<- NetworkBlock, finalErrorCh chan<- NetworkError) {
+func (s *service) retryFailedBlockFetches(ctx context.Context, retryCh <-chan BlockDispatchFailure, recoveredCh chan<- blockProcessingState, finalErrorCh chan<- BlockDispatchFailure) {
 	for netErr := range retryCh {
 		retryErr := s.retry.Execute(ctx, func() error {
 			client, ok := s.networks[netErr.Network]
@@ -54,7 +66,7 @@ func (s *service) retryFailedBlockFetches(ctx context.Context, retryCh <-chan Ne
 
 			block, err := client.FetchBlockByHeight(ctx, netErr.Height)
 			if err == nil {
-				recoveredCh <- NetworkBlock{Network: netErr.Network, Block: block}
+				recoveredCh <- newBlockProcessingState(netErr.Network, block)
 			}
 
 			return err
@@ -78,19 +90,19 @@ func (s *service) retryFailedBlockFetches(ctx context.Context, retryCh <-chan Ne
 // retryFailedBlockFetches. It returns immediately, leaving the retry loop
 // running until retryCh is closed or ctx is canceled.
 // retryCh, recoveredCh, and finalErrorCh must be closed by the caller.
-func (s *service) startRetryFailedBlockFetches(ctx context.Context, retryCh <-chan NetworkError, recoveredCh chan<- NetworkBlock, finalErrorCh chan<- NetworkError) {
+func (s *service) startRetryFailedBlockFetches(ctx context.Context, retryCh <-chan BlockDispatchFailure, recoveredCh chan<- blockProcessingState, finalErrorCh chan<- BlockDispatchFailure) {
 	go s.retryFailedBlockFetches(ctx, retryCh, recoveredCh, finalErrorCh)
 }
 
 // dispatchSubscriptionEvents reads BlockchainEvent values from eventsCh and routes them:
-//   - On event.Err != nil, wraps the error and sends a NetworkError to errorsCh.
-//   - On success, sends a NetworkBlock to blocksCh.
+//   - On event.Err != nil, wraps the error and sends a BlockDispatchFailure to errorsCh.
+//   - On success, sends a blockProcessingState to blocksCh.
 //
 // blocksCh and errorsCh are global shared channels and must be closed by the caller.
-func (s *service) dispatchSubscriptionEvents(ctx context.Context, network string, eventsCh <-chan BlockchainEvent, blocksCh chan<- NetworkBlock, errorsCh chan<- NetworkError) {
+func (s *service) dispatchSubscriptionEvents(ctx context.Context, network string, eventsCh <-chan BlockchainEvent, blocksCh chan<- blockProcessingState, errorsCh chan<- BlockDispatchFailure) {
 	for event := range eventsCh {
 		if event.Err != nil {
-			errorsCh <- NetworkError{
+			errorsCh <- BlockDispatchFailure{
 				Network: network,
 				Height:  event.Height,
 				Err:     event.Err,
@@ -101,7 +113,7 @@ func (s *service) dispatchSubscriptionEvents(ctx context.Context, network string
 		select {
 		case <-ctx.Done():
 			return
-		case blocksCh <- NetworkBlock{Network: network, Block: event.Block}:
+		case blocksCh <- newBlockProcessingState(network, event.Block):
 		}
 	}
 }
@@ -115,7 +127,7 @@ func (s *service) dispatchSubscriptionEvents(ctx context.Context, network string
 //
 // blocksCh and errorsCh are global shared channels and must be managed and closed by the caller.
 // Returns an error if any initial subscription or checkpoint load (aside from no-checkpoint) fails.
-func (s *service) launchAllNetworkSubscriptions(ctx context.Context, blocksCh chan<- NetworkBlock, errorsCh chan<- NetworkError) error {
+func (s *service) launchAllNetworkSubscriptions(ctx context.Context, blocksCh chan<- blockProcessingState, errorsCh chan<- BlockDispatchFailure) error {
 	for network, client := range s.networks {
 		startHeight, err := s.checkpointStorage.LoadLatestCheckpoint(ctx, network)
 		if err != nil && !errors.Is(err, ErrNoCheckpointFound) {
