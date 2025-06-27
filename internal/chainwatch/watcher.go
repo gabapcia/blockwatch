@@ -19,7 +19,6 @@ type Service interface {
 
 type service struct {
 	networks          map[string]Blockchain
-	walletStorage     WalletStorage
 	checkpointStorage CheckpointStorage
 
 	retry retry.Retry
@@ -62,11 +61,10 @@ func (s *service) Start(ctx context.Context) error {
 	return s.process(ctx, processingCh)
 }
 
-func NewService(walletStorage WalletStorage, checkpointStorage CheckpointStorage, networks map[string]Blockchain, retry retry.Retry) *service {
+func NewService(checkpointStorage CheckpointStorage, networks map[string]Blockchain, retry retry.Retry) *service {
 	return &service{
 		retry:             retry,
 		networks:          networks,
-		walletStorage:     walletStorage,
 		checkpointStorage: checkpointStorage,
 	}
 }
