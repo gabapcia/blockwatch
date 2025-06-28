@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/gabapcia/blockwatch/internal/pkg/types"
+	"github.com/gabapcia/blockwatch/internal/pkg/x/chflow"
 )
 
 // ErrNetworkNotRegistered is returned when attempting to operate on an unregistered network.
@@ -38,13 +39,45 @@ type Blockchain interface {
 // BlockDispatchFailure represents a failure that occurred when attempting to dispatch
 // a block for processing. This typically happens when a BlockchainEvent contains an error.
 //
-// The error may be a single failure or a chain of multiple errors joined using errors.Join,
-// especially if retries were attempted. Callers may use errors.Unwrap or errors.As to inspect
-// the underlying errors.
+// The Errors field contains a slice of all errors encountered during the dispatch process.
+// This includes the original error from the BlockchainEvent and any additional errors
+// from retry attempts. When retries are performed and fail, the retry errors are appended
+// to this slice, preserving the complete error history.
+//
+// Callers can iterate through the Errors slice to examine all failures, or use
+// errors.Join(failure.Errors...) to create a single combined error for logging
+// or error handling purposes.
 type BlockDispatchFailure struct {
 	Network string    // name of the blockchain network (e.g., "ethereum")
 	Height  types.Hex // block height that failed to be dispatched
-	Err     error     // one or more errors encountered; may be joined via errors.Join
+	Errors  []error   // slice of all errors encountered during dispatch and retry attempts
+}
+
+// handleDispatchFailures consumes unrecoverable block dispatch errors from dispatchErrCh,
+// and passes each BlockDispatchFailure to the user-defined handler (s.onDispatchFailure).
+//
+// This method blocks until dispatchErrCh is closed or ctx is canceled.
+// If no handler is set, failures are silently ignored.
+func (s *service) handleDispatchFailures(ctx context.Context, dispatchErrCh <-chan BlockDispatchFailure) {
+	for {
+		dispatchFailure, ok := chflow.Receive(ctx, dispatchErrCh)
+		if !ok {
+			return
+		}
+
+		if s.onDispatchFailure != nil {
+			s.onDispatchFailure(ctx, dispatchFailure)
+		}
+	}
+}
+
+// startHandleDispatchFailures launches handleDispatchFailures in a background goroutine.
+//
+// It immediately returns, leaving the handler running until dispatchErrCh is closed
+// or ctx is canceled. This function is typically called during startup to ensure that
+// persistent dispatch errors are properly handled.
+func (s *service) startHandleDispatchFailures(ctx context.Context, dispatchErrCh <-chan BlockDispatchFailure) {
+	go s.handleDispatchFailures(ctx, dispatchErrCh)
 }
 
 // retryFailedBlockFetches contains the core retry logic for failed block fetches.
@@ -57,8 +90,13 @@ type BlockDispatchFailure struct {
 // retryCh, recoveredCh, and finalErrorCh are shared global channels; this function
 // does not close any of them.
 func (s *service) retryFailedBlockFetches(ctx context.Context, retryCh <-chan BlockDispatchFailure, recoveredCh chan<- ObservedBlock, finalErrorCh chan<- BlockDispatchFailure) {
-	for netErr := range retryCh {
-		retryErr := s.retry.Execute(ctx, func() error {
+	for {
+		netErr, ok := chflow.Receive(ctx, retryCh)
+		if !ok {
+			return
+		}
+
+		retryErrs := s.retry.Execute(ctx, func() error {
 			client, ok := s.networks[netErr.Network]
 			if !ok {
 				return ErrNetworkNotRegistered
@@ -69,20 +107,19 @@ func (s *service) retryFailedBlockFetches(ctx context.Context, retryCh <-chan Bl
 				return err
 			}
 
-			recoveredCh <- ObservedBlock{Network: netErr.Network, Block: block}
+			observedBlock := ObservedBlock{Network: netErr.Network, Block: block}
+			_ = chflow.Send(ctx, recoveredCh, observedBlock)
 			return nil
 		})
-		if retryErr == nil {
+		if retryErrs == nil {
 			continue // success: drop the event
 		}
 
-		// persistent failure: attach retryErr and forward
-		netErr.Err = errors.Join(netErr.Err, retryErr)
+		// persistent failure: append retryErrs and forward
+		netErr.Errors = append(netErr.Errors, retryErrs...)
 
-		select {
-		case <-ctx.Done():
+		if ok = chflow.Send(ctx, finalErrorCh, netErr); !ok {
 			return
-		case finalErrorCh <- netErr:
 		}
 	}
 }
@@ -101,20 +138,28 @@ func (s *service) startRetryFailedBlockFetches(ctx context.Context, retryCh <-ch
 //
 // blocksCh and errorsCh are global shared channels and must be closed by the caller.
 func (s *service) dispatchSubscriptionEvents(ctx context.Context, network string, eventsCh <-chan BlockchainEvent, blocksCh chan<- ObservedBlock, errorsCh chan<- BlockDispatchFailure) {
-	for event := range eventsCh {
+	for {
+		event, ok := chflow.Receive(ctx, eventsCh)
+		if !ok {
+			return
+		}
+
 		if event.Err != nil {
-			errorsCh <- BlockDispatchFailure{
+			dispatchFailure := BlockDispatchFailure{
 				Network: network,
 				Height:  event.Height,
-				Err:     event.Err,
+				Errors:  []error{event.Err},
 			}
+			if ok := chflow.Send(ctx, errorsCh, dispatchFailure); !ok {
+				return
+			}
+
 			continue
 		}
 
-		select {
-		case <-ctx.Done():
+		observedBlock := ObservedBlock{Network: network, Block: event.Block}
+		if ok := chflow.Send(ctx, blocksCh, observedBlock); !ok {
 			return
-		case blocksCh <- ObservedBlock{Network: network, Block: event.Block}:
 		}
 	}
 }

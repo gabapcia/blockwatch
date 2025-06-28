@@ -7,6 +7,7 @@ package mocks
 import (
 	"context"
 
+	"github.com/gabapcia/blockwatch/internal/chainwatch"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -37,21 +38,72 @@ func (_m *Service) EXPECT() *Service_Expecter {
 	return &Service_Expecter{mock: &_m.Mock}
 }
 
+// Close provides a mock function for the type Service
+func (_mock *Service) Close(ctx context.Context) {
+	_mock.Called(ctx)
+	return
+}
+
+// Service_Close_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Close'
+type Service_Close_Call struct {
+	*mock.Call
+}
+
+// Close is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *Service_Expecter) Close(ctx interface{}) *Service_Close_Call {
+	return &Service_Close_Call{Call: _e.mock.On("Close", ctx)}
+}
+
+func (_c *Service_Close_Call) Run(run func(ctx context.Context)) *Service_Close_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *Service_Close_Call) Return() *Service_Close_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *Service_Close_Call) RunAndReturn(run func(ctx context.Context)) *Service_Close_Call {
+	_c.Run(run)
+	return _c
+}
+
 // Start provides a mock function for the type Service
-func (_mock *Service) Start(ctx context.Context) error {
+func (_mock *Service) Start(ctx context.Context) (<-chan chainwatch.ObservedBlock, error) {
 	ret := _mock.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Start")
 	}
 
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context) error); ok {
+	var r0 <-chan chainwatch.ObservedBlock
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (<-chan chainwatch.ObservedBlock, error)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) <-chan chainwatch.ObservedBlock); ok {
 		r0 = returnFunc(ctx)
 	} else {
-		r0 = ret.Error(0)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(<-chan chainwatch.ObservedBlock)
+		}
 	}
-	return r0
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
 }
 
 // Service_Start_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Start'
@@ -78,12 +130,12 @@ func (_c *Service_Start_Call) Run(run func(ctx context.Context)) *Service_Start_
 	return _c
 }
 
-func (_c *Service_Start_Call) Return(err error) *Service_Start_Call {
-	_c.Call.Return(err)
+func (_c *Service_Start_Call) Return(observedBlockCh <-chan chainwatch.ObservedBlock, err error) *Service_Start_Call {
+	_c.Call.Return(observedBlockCh, err)
 	return _c
 }
 
-func (_c *Service_Start_Call) RunAndReturn(run func(ctx context.Context) error) *Service_Start_Call {
+func (_c *Service_Start_Call) RunAndReturn(run func(ctx context.Context) (<-chan chainwatch.ObservedBlock, error)) *Service_Start_Call {
 	_c.Call.Return(run)
 	return _c
 }

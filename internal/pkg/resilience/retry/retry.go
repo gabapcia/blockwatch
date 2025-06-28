@@ -8,10 +8,14 @@
 // Basic usage:
 //
 //	r := retry.New()
-//	err := r.Execute(context.Background(), func() error {
+//	errs := r.Execute(context.Background(), func() error {
 //	    // Your operation that might fail temporarily
 //	    return someOperation()
 //	})
+//	if len(errs) > 0 {
+//	    // Handle errors from retry attempts
+//	    log.Printf("Operation failed after retries: %v", errs)
+//	}
 //
 // With custom options:
 //
@@ -19,12 +23,13 @@
 //	    retry.WithAttempts(5),
 //	    retry.WithDelay(2*time.Second),
 //	    retry.WithMaxDelay(10*time.Second),
-//	    retry.WithLastErrorOnly(false),
+//	    retry.WithLastErrorOnly(false), // Get all errors, not just the last one
 //	)
 package retry
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	retry "github.com/avast/retry-go/v4"
@@ -45,9 +50,12 @@ type Retry interface {
 	// The operation function should be idempotent (safe to call multiple times)
 	// and should return nil on success or an error on failure.
 	//
-	// Execute returns nil if the operation succeeds within the configured
-	// number of attempts, or an error if all attempts fail or the context is done.
-	Execute(ctx context.Context, operation func() error) error
+	// Execute returns an empty slice if the operation succeeds within the configured
+	// number of attempts, or a slice of errors if all attempts fail or the context is done.
+	// The number of errors returned depends on the WithLastErrorOnly configuration:
+	// - When true (default): returns only the last error
+	// - When false: returns all errors from all failed attempts
+	Execute(ctx context.Context, operation func() error) []error
 }
 
 // config holds internal settings for the retry mechanism.
@@ -118,7 +126,7 @@ func New(opts ...Option) Retry {
 //	r := retry.New()
 //	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 //	defer cancel()
-//	err := r.Execute(ctx, func() error {
+//	errs := r.Execute(ctx, func() error {
 //	    resp, err := http.Get("https://example.com")
 //	    if err != nil {
 //	        return err
@@ -127,7 +135,10 @@ func New(opts ...Option) Retry {
 //	    // Process response...
 //	    return nil
 //	})
-func (r *retrier) Execute(ctx context.Context, operation func() error) error {
+//	if len(errs) > 0 {
+//	    log.Printf("HTTP request failed after retries: %v", errs)
+//	}
+func (r *retrier) Execute(ctx context.Context, operation func() error) []error {
 	options := []retry.Option{
 		retry.Attempts(r.cfg.attempts),
 		retry.Delay(r.cfg.delay),
@@ -137,7 +148,17 @@ func (r *retrier) Execute(ctx context.Context, operation func() error) error {
 		retry.Context(ctx), // Use the provided context for cancellation
 	}
 
-	return retry.Do(operation, options...)
+	err := retry.Do(operation, options...)
+	if err == nil {
+		return []error{}
+	}
+
+	var retryErr retry.Error
+	if errors.As(err, &retryErr) {
+		return retryErr.WrappedErrors()
+	}
+
+	return []error{err}
 }
 
 // WithAttempts sets the maximum number of attempts (including the initial attempt).

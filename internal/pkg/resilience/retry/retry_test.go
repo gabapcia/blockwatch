@@ -15,12 +15,12 @@ func TestRetry_Execute(t *testing.T) {
 		r := New()
 		callCount := 0
 
-		err := r.Execute(t.Context(), func() error {
+		errs := r.Execute(t.Context(), func() error {
 			callCount++
 			return nil
 		})
 
-		assert.NoError(t, err)
+		assert.Empty(t, errs, "No errors should be returned for successful operation")
 		assert.Equal(t, 1, callCount, "Operation should be called exactly once")
 	})
 
@@ -28,7 +28,7 @@ func TestRetry_Execute(t *testing.T) {
 		r := New(WithAttempts(3))
 		callCount := 0
 
-		err := r.Execute(t.Context(), func() error {
+		errs := r.Execute(t.Context(), func() error {
 			callCount++
 			if callCount < 2 {
 				return errors.New("temporary error")
@@ -36,7 +36,7 @@ func TestRetry_Execute(t *testing.T) {
 			return nil
 		})
 
-		assert.NoError(t, err)
+		assert.Empty(t, errs, "No errors should be returned for successful operation")
 		assert.Equal(t, 2, callCount, "Operation should be called exactly twice")
 	})
 
@@ -49,13 +49,13 @@ func TestRetry_Execute(t *testing.T) {
 		callCount := 0
 		expectedErr := errors.New("persistent error")
 
-		err := r.Execute(t.Context(), func() error {
+		errs := r.Execute(t.Context(), func() error {
 			callCount++
 			return expectedErr
 		})
 
-		assert.Error(t, err)
-		assert.ErrorIs(t, err, expectedErr)
+		assert.NotEmpty(t, errs, "Errors should be returned when all attempts fail")
+		assert.Contains(t, errs, expectedErr, "Expected error should be in the error list")
 		assert.Equal(t, 3, callCount, "Operation should be called exactly 3 times")
 	})
 
@@ -75,14 +75,67 @@ func TestRetry_Execute(t *testing.T) {
 			cancel()
 		}()
 
-		err := r.Execute(ctx, func() error {
+		errs := r.Execute(ctx, func() error {
 			callCount++
 			return errors.New("error that would normally trigger retry")
 		})
 
-		assert.Error(t, err)
+		assert.NotEmpty(t, errs, "Errors should be returned when context is canceled")
 		assert.Equal(t, 1, callCount, "Operation should be called exactly once due to context cancellation")
-		assert.ErrorIs(t, err, context.Canceled)
+		// Check if any of the errors is context.Canceled
+		var foundCanceledError bool
+		for _, err := range errs {
+			if errors.Is(err, context.Canceled) {
+				foundCanceledError = true
+				break
+			}
+		}
+		assert.True(t, foundCanceledError, "Should contain context.Canceled error")
+	})
+
+	t.Run("last error only - default behavior", func(t *testing.T) {
+		r := New(
+			WithAttempts(3),
+			WithDelay(1*time.Millisecond),
+			WithMaxDelay(5*time.Millisecond),
+			// WithLastErrorOnly(true) is the default
+		)
+		callCount := 0
+
+		errs := r.Execute(t.Context(), func() error {
+			callCount++
+			return errors.New("error " + string(rune('0'+callCount)))
+		})
+
+		assert.NotEmpty(t, errs, "Errors should be returned when all attempts fail")
+		assert.Len(t, errs, 1, "Should return only the last error by default")
+		assert.Equal(t, 3, callCount, "Operation should be called exactly 3 times")
+		assert.Contains(t, errs[0].Error(), "error 3", "Should contain the last error")
+	})
+
+	t.Run("all errors returned when lastErrOnly is false", func(t *testing.T) {
+		r := New(
+			WithAttempts(3),
+			WithDelay(1*time.Millisecond),
+			WithMaxDelay(5*time.Millisecond),
+			WithLastErrorOnly(false),
+		)
+		callCount := 0
+
+		errs := r.Execute(t.Context(), func() error {
+			callCount++
+			return errors.New("error " + string(rune('0'+callCount)))
+		})
+
+		assert.NotEmpty(t, errs, "Errors should be returned when all attempts fail")
+		assert.Len(t, errs, 3, "Should return all errors when lastErrOnly is false")
+		assert.Equal(t, 3, callCount, "Operation should be called exactly 3 times")
+
+		// Verify all errors are present
+		for i, err := range errs {
+			expectedMsg := "error " + string(rune('1'+i))
+			assert.Contains(t, err.Error(), expectedMsg, "Should contain error from attempt %d", i+1)
+		}
 	})
 }
 

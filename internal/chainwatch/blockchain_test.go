@@ -61,7 +61,7 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		inputError := BlockDispatchFailure{
 			Network: "ethereum",
 			Height:  types.Hex("0x123"),
-			Err:     errors.New("original fetch error"),
+			Errors:  []error{errors.New("original fetch error")},
 		}
 		retryCh <- inputError
 		close(retryCh) // Close to signal end of input
@@ -98,10 +98,14 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 
 		// Mock retry that returns ErrNetworkNotRegistered
 		retryMock.EXPECT().Execute(mock.Anything, mock.AnythingOfType("func() error")).
-			RunAndReturn(func(ctx context.Context, operation func() error) error {
+			RunAndReturn(func(ctx context.Context, operation func() error) []error {
 				// Execute the operation to simulate the actual retry logic
-				return operation()
-			}).Return(ErrNetworkNotRegistered)
+				err := operation()
+				if err != nil {
+					return []error{err}
+				}
+				return nil
+			}).Return([]error{ErrNetworkNotRegistered})
 
 		// Create channels
 		retryCh := make(chan BlockDispatchFailure, 1)
@@ -118,7 +122,7 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		inputError := BlockDispatchFailure{
 			Network: "unknown-network",
 			Height:  types.Hex("0x456"),
-			Err:     errors.New("original fetch error"),
+			Errors:  []error{errors.New("original fetch error")},
 		}
 		retryCh <- inputError
 		close(retryCh)
@@ -128,8 +132,9 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		case finalErr := <-finalErrorCh:
 			assert.Equal(t, "unknown-network", finalErr.Network)
 			assert.Equal(t, types.Hex("0x456"), finalErr.Height)
-			assert.Contains(t, finalErr.Err.Error(), "original fetch error")
-			assert.Contains(t, finalErr.Err.Error(), "network not registered")
+			assert.Len(t, finalErr.Errors, 2, "Expected original error plus retry error")
+			assert.Contains(t, finalErr.Errors[0].Error(), "original fetch error")
+			assert.Contains(t, finalErr.Errors[1].Error(), "network not registered")
 		case <-time.After(2 * time.Second):
 			t.Fatal("Expected final error to be sent")
 		}
@@ -163,7 +168,7 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 			Run(func(ctx context.Context, operation func() error) {
 				// Execute the operation to simulate the actual retry logic
 				operation()
-			}).Return(persistentErr)
+			}).Return([]error{persistentErr})
 
 		// Mock blockchain client that returns error
 		blockchainMock.EXPECT().FetchBlockByHeight(mock.Anything, types.Hex("0x789")).
@@ -184,7 +189,7 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		inputError := BlockDispatchFailure{
 			Network: "ethereum",
 			Height:  types.Hex("0x789"),
-			Err:     errors.New("original fetch error"),
+			Errors:  []error{errors.New("original fetch error")},
 		}
 		retryCh <- inputError
 		close(retryCh)
@@ -194,8 +199,9 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		case finalErr := <-finalErrorCh:
 			assert.Equal(t, "ethereum", finalErr.Network)
 			assert.Equal(t, types.Hex("0x789"), finalErr.Height)
-			assert.Contains(t, finalErr.Err.Error(), "original fetch error")
-			assert.Contains(t, finalErr.Err.Error(), "persistent blockchain error")
+			assert.Len(t, finalErr.Errors, 2, "Expected original error plus retry error")
+			assert.Contains(t, finalErr.Errors[0].Error(), "original fetch error")
+			assert.Contains(t, finalErr.Errors[1].Error(), "persistent blockchain error")
 		case <-time.After(2 * time.Second):
 			t.Fatal("Expected final error to be sent")
 		}
@@ -223,7 +229,7 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 
 		// Mock retry that returns context canceled error
 		retryMock.EXPECT().Execute(mock.Anything, mock.AnythingOfType("func() error")).
-			Return(context.Canceled)
+			Return([]error{context.Canceled})
 
 		// Create channels
 		retryCh := make(chan BlockDispatchFailure, 1)
@@ -240,7 +246,7 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		inputError := BlockDispatchFailure{
 			Network: "ethereum",
 			Height:  types.Hex("0xabc"),
-			Err:     errors.New("original fetch error"),
+			Errors:  []error{errors.New("original fetch error")},
 		}
 		retryCh <- inputError
 		close(retryCh)
@@ -250,8 +256,9 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		case finalErr := <-finalErrorCh:
 			assert.Equal(t, "ethereum", finalErr.Network)
 			assert.Equal(t, types.Hex("0xabc"), finalErr.Height)
-			assert.Contains(t, finalErr.Err.Error(), "original fetch error")
-			assert.Contains(t, finalErr.Err.Error(), "context canceled")
+			assert.Len(t, finalErr.Errors, 2, "Expected original error plus retry error")
+			assert.Contains(t, finalErr.Errors[0].Error(), "original fetch error")
+			assert.Contains(t, finalErr.Errors[1].Error(), "context canceled")
 		case <-time.After(2 * time.Second):
 			t.Fatal("Expected final error to be sent")
 		}
@@ -292,7 +299,7 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		retryMock.EXPECT().Execute(mock.Anything, mock.AnythingOfType("func() error")).
 			Run(func(ctx context.Context, operation func() error) {
 				operation()
-			}).Return(errors.New("persistent error")).Once()
+			}).Return([]error{errors.New("persistent error")}).Once()
 
 		blockchainMock.EXPECT().FetchBlockByHeight(mock.Anything, types.Hex("0x200")).
 			Return(Block{}, errors.New("persistent error")).Once()
@@ -311,12 +318,12 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		retryCh <- BlockDispatchFailure{
 			Network: "ethereum",
 			Height:  types.Hex("0x100"),
-			Err:     errors.New("error 1"),
+			Errors:  []error{errors.New("error 1")},
 		}
 		retryCh <- BlockDispatchFailure{
 			Network: "ethereum",
 			Height:  types.Hex("0x200"),
-			Err:     errors.New("error 2"),
+			Errors:  []error{errors.New("error 2")},
 		}
 		close(retryCh)
 
@@ -353,8 +360,9 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		// Check final error
 		assert.Equal(t, "ethereum", finalErrors[0].Network)
 		assert.Equal(t, types.Hex("0x200"), finalErrors[0].Height)
-		assert.Contains(t, finalErrors[0].Err.Error(), "error 2")
-		assert.Contains(t, finalErrors[0].Err.Error(), "persistent error")
+		assert.Len(t, finalErrors[0].Errors, 2, "Expected original error plus retry error")
+		assert.Contains(t, finalErrors[0].Errors[0].Error(), "error 2")
+		assert.Contains(t, finalErrors[0].Errors[1].Error(), "persistent error")
 	})
 
 	t.Run("empty retry channel", func(t *testing.T) {
@@ -415,7 +423,7 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 
 		// Mock retry that returns an error
 		retryMock.EXPECT().Execute(mock.Anything, mock.AnythingOfType("func() error")).
-			Return(errors.New("retry failed"))
+			Return([]error{errors.New("retry failed")})
 
 		// Create channels with no buffer to simulate blocking
 		retryCh := make(chan BlockDispatchFailure, 1)
@@ -436,7 +444,7 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		retryCh <- BlockDispatchFailure{
 			Network: "unknown",
 			Height:  types.Hex("0x123"),
-			Err:     errors.New("original error"),
+			Errors:  []error{errors.New("original error")},
 		}
 
 		// Cancel context immediately to simulate context done before final error can be sent
@@ -502,7 +510,7 @@ func TestService_startRetryFailedBlockFetches(t *testing.T) {
 		inputError := BlockDispatchFailure{
 			Network: "ethereum",
 			Height:  types.Hex("0x123"),
-			Err:     errors.New("original error"),
+			Errors:  []error{errors.New("original error")},
 		}
 		retryCh <- inputError
 		close(retryCh)
@@ -569,7 +577,7 @@ func TestService_startRetryFailedBlockFetches(t *testing.T) {
 
 		// Mock retry that returns an error
 		retryMock.EXPECT().Execute(mock.Anything, mock.AnythingOfType("func() error")).
-			Return(errors.New("retry failed"))
+			Return([]error{errors.New("retry failed")})
 
 		// Create channels
 		retryCh := make(chan BlockDispatchFailure, 1)
@@ -586,7 +594,7 @@ func TestService_startRetryFailedBlockFetches(t *testing.T) {
 		retryCh <- BlockDispatchFailure{
 			Network: "unknown",
 			Height:  types.Hex("0x123"),
-			Err:     errors.New("original error"),
+			Errors:  []error{errors.New("original error")},
 		}
 
 		// Wait for final error to be processed
@@ -594,8 +602,9 @@ func TestService_startRetryFailedBlockFetches(t *testing.T) {
 		case finalErr := <-finalErrorCh:
 			assert.Equal(t, "unknown", finalErr.Network)
 			assert.Equal(t, types.Hex("0x123"), finalErr.Height)
-			assert.Contains(t, finalErr.Err.Error(), "original error")
-			assert.Contains(t, finalErr.Err.Error(), "retry failed")
+			assert.Len(t, finalErr.Errors, 2, "Expected original error plus retry error")
+			assert.Contains(t, finalErr.Errors[0].Error(), "original error")
+			assert.Contains(t, finalErr.Errors[1].Error(), "retry failed")
 		case <-time.After(1 * time.Second):
 			t.Fatal("Expected final error to be sent")
 		}
@@ -737,12 +746,14 @@ func TestService_dispatchSubscriptionEvents(t *testing.T) {
 		// Check first error
 		assert.Equal(t, "ethereum", receivedErrors[0].Network)
 		assert.Equal(t, types.Hex("0x200"), receivedErrors[0].Height)
-		assert.Equal(t, "fetch error 1", receivedErrors[0].Err.Error())
+		assert.Len(t, receivedErrors[0].Errors, 1, "Expected one error")
+		assert.Equal(t, "fetch error 1", receivedErrors[0].Errors[0].Error())
 
 		// Check second error
 		assert.Equal(t, "ethereum", receivedErrors[1].Network)
 		assert.Equal(t, types.Hex("0x201"), receivedErrors[1].Height)
-		assert.Equal(t, "fetch error 2", receivedErrors[1].Err.Error())
+		assert.Len(t, receivedErrors[1].Errors, 1, "Expected one error")
+		assert.Equal(t, "fetch error 2", receivedErrors[1].Errors[0].Error())
 
 		// Verify no blocks were sent
 		select {
@@ -829,7 +840,8 @@ func TestService_dispatchSubscriptionEvents(t *testing.T) {
 		// Check error
 		assert.Equal(t, "bitcoin", receivedErrors[0].Network)
 		assert.Equal(t, types.Hex("0x301"), receivedErrors[0].Height)
-		assert.Equal(t, "network error", receivedErrors[0].Err.Error())
+		assert.Len(t, receivedErrors[0].Errors, 1, "Expected one error")
+		assert.Equal(t, "network error", receivedErrors[0].Errors[0].Error())
 	})
 
 	t.Run("context canceled while processing", func(t *testing.T) {

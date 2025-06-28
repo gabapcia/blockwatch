@@ -38,18 +38,20 @@ func (_m *Retry) EXPECT() *Retry_Expecter {
 }
 
 // Execute provides a mock function for the type Retry
-func (_mock *Retry) Execute(ctx context.Context, operation func() error) error {
+func (_mock *Retry) Execute(ctx context.Context, operation func() error) []error {
 	ret := _mock.Called(ctx, operation)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Execute")
 	}
 
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, func() error) error); ok {
+	var r0 []error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, func() error) []error); ok {
 		r0 = returnFunc(ctx, operation)
 	} else {
-		r0 = ret.Error(0)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]error)
+		}
 	}
 	return r0
 }
@@ -84,12 +86,12 @@ func (_c *Retry_Execute_Call) Run(run func(ctx context.Context, operation func()
 	return _c
 }
 
-func (_c *Retry_Execute_Call) Return(err error) *Retry_Execute_Call {
-	_c.Call.Return(err)
+func (_c *Retry_Execute_Call) Return(errs []error) *Retry_Execute_Call {
+	_c.Call.Return(errs)
 	return _c
 }
 
-func (_c *Retry_Execute_Call) RunAndReturn(run func(ctx context.Context, operation func() error) error) *Retry_Execute_Call {
+func (_c *Retry_Execute_Call) RunAndReturn(run func(ctx context.Context, operation func() error) []error) *Retry_Execute_Call {
 	_c.Call.Return(run)
 	return _c
 }
