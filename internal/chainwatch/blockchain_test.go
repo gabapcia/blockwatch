@@ -23,7 +23,7 @@ func TestService_handleDispatchFailures(t *testing.T) {
 
 		// Create service with custom handler
 		svc := &service{
-			onDispatchFailure: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
+			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
 				mu.Lock()
 				defer mu.Unlock()
 				handlerCalls = append(handlerCalls, dispatchFailure)
@@ -99,7 +99,7 @@ func TestService_handleDispatchFailures(t *testing.T) {
 	t.Run("ignores failures when no handler is set", func(t *testing.T) {
 		// Create service with no handler
 		svc := &service{
-			onDispatchFailure: nil,
+			dispatchFailureHandler: nil,
 		}
 
 		// Create channel and context
@@ -148,7 +148,7 @@ func TestService_handleDispatchFailures(t *testing.T) {
 
 		// Create service with custom handler
 		svc := &service{
-			onDispatchFailure: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
+			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
 				mu.Lock()
 				defer mu.Unlock()
 				handlerCalls = append(handlerCalls, dispatchFailure)
@@ -199,7 +199,7 @@ func TestService_handleDispatchFailures(t *testing.T) {
 	t.Run("returns when channel is closed", func(t *testing.T) {
 		// Create service with handler
 		svc := &service{
-			onDispatchFailure: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
+			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
 				// Handler implementation doesn't matter for this test
 			},
 		}
@@ -230,7 +230,7 @@ func TestService_handleDispatchFailures(t *testing.T) {
 	t.Run("handles empty channel gracefully", func(t *testing.T) {
 		// Create service with handler
 		svc := &service{
-			onDispatchFailure: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
+			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
 				t.Fatal("Handler should not be called for empty channel")
 			},
 		}
@@ -270,7 +270,7 @@ func TestService_handleDispatchFailures(t *testing.T) {
 
 		// Create service with custom handler that captures context
 		svc := &service{
-			onDispatchFailure: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
+			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
 				mu.Lock()
 				defer mu.Unlock()
 				receivedCtx = ctx
@@ -319,7 +319,7 @@ func TestService_handleDispatchFailures(t *testing.T) {
 
 		// Create service with custom handler that tracks order
 		svc := &service{
-			onDispatchFailure: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
+			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
 				mu.Lock()
 				defer mu.Unlock()
 				handlerCalls = append(handlerCalls, dispatchFailure.Network+"-"+string(dispatchFailure.Height))
@@ -375,7 +375,7 @@ func TestService_handleDispatchFailures(t *testing.T) {
 	t.Run("handler panic does not crash function", func(t *testing.T) {
 		// Create service with handler that panics
 		svc := &service{
-			onDispatchFailure: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
+			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
 				panic("handler panic")
 			},
 		}
@@ -423,7 +423,7 @@ func TestService_startHandleDispatchFailures(t *testing.T) {
 
 		// Create service with custom handler
 		svc := &service{
-			onDispatchFailure: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
+			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
 				mu.Lock()
 				defer mu.Unlock()
 				handlerCalls = append(handlerCalls, dispatchFailure)
@@ -462,7 +462,7 @@ func TestService_startHandleDispatchFailures(t *testing.T) {
 	t.Run("function returns immediately", func(t *testing.T) {
 		// Create service
 		svc := &service{
-			onDispatchFailure: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
+			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
 				// Handler implementation doesn't matter for this test
 			},
 		}
@@ -492,7 +492,7 @@ func TestService_startHandleDispatchFailures(t *testing.T) {
 
 		// Create service with custom handler
 		svc := &service{
-			onDispatchFailure: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
+			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
 				mu.Lock()
 				defer mu.Unlock()
 				handlerCalls = append(handlerCalls, dispatchFailure)
@@ -535,7 +535,7 @@ func TestService_startHandleDispatchFailures(t *testing.T) {
 
 		// Create service with custom handler that includes a unique identifier
 		svc := &service{
-			onDispatchFailure: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
+			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
 				mu.Lock()
 				defer mu.Unlock()
 				// Use the network name to identify which goroutine processed this

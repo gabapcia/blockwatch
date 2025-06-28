@@ -39,8 +39,8 @@ func (_m *Service) EXPECT() *Service_Expecter {
 }
 
 // Close provides a mock function for the type Service
-func (_mock *Service) Close(ctx context.Context) {
-	_mock.Called(ctx)
+func (_mock *Service) Close() {
+	_mock.Called()
 	return
 }
 
@@ -50,20 +50,13 @@ type Service_Close_Call struct {
 }
 
 // Close is a helper method to define mock.On call
-//   - ctx context.Context
-func (_e *Service_Expecter) Close(ctx interface{}) *Service_Close_Call {
-	return &Service_Close_Call{Call: _e.mock.On("Close", ctx)}
+func (_e *Service_Expecter) Close() *Service_Close_Call {
+	return &Service_Close_Call{Call: _e.mock.On("Close")}
 }
 
-func (_c *Service_Close_Call) Run(run func(ctx context.Context)) *Service_Close_Call {
+func (_c *Service_Close_Call) Run(run func()) *Service_Close_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		run(
-			arg0,
-		)
+		run()
 	})
 	return _c
 }
@@ -73,7 +66,7 @@ func (_c *Service_Close_Call) Return() *Service_Close_Call {
 	return _c
 }
 
-func (_c *Service_Close_Call) RunAndReturn(run func(ctx context.Context)) *Service_Close_Call {
+func (_c *Service_Close_Call) RunAndReturn(run func()) *Service_Close_Call {
 	_c.Run(run)
 	return _c
 }

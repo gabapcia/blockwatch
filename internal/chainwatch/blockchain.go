@@ -54,7 +54,7 @@ type BlockDispatchFailure struct {
 }
 
 // handleDispatchFailures consumes unrecoverable block dispatch errors from dispatchErrCh,
-// and passes each BlockDispatchFailure to the user-defined handler (s.onDispatchFailure).
+// and passes each BlockDispatchFailure to the user-defined handler (s.dispatchFailureHandler).
 //
 // This method blocks until dispatchErrCh is closed or ctx is canceled.
 // If no handler is set, failures are silently ignored.
@@ -65,8 +65,8 @@ func (s *service) handleDispatchFailures(ctx context.Context, dispatchErrCh <-ch
 			return
 		}
 
-		if s.onDispatchFailure != nil {
-			s.onDispatchFailure(ctx, dispatchFailure)
+		if s.dispatchFailureHandler != nil {
+			s.dispatchFailureHandler(ctx, dispatchFailure)
 		}
 	}
 }

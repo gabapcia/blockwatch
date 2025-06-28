@@ -1,121 +1,124 @@
 package chainwatch
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"sync"
 
 	"github.com/gabapcia/blockwatch/internal/pkg/logger"
 	"github.com/gabapcia/blockwatch/internal/pkg/resilience/retry"
+	"github.com/gabapcia/blockwatch/internal/pkg/x/chflow"
 )
 
 var ErrServiceAlreadyStarted = errors.New("service already started")
 
 const (
-	errorChannelBufferSize      = 5
-	recoveryChannelBufferSize   = 5
-	processingChannelBufferSize = 10
+	dispatchFailureChannelBufferSize = 5
+	retryFailureChannelBufferSize    = 5
+	observedBlockChannelBufferSize   = 10
 )
 
 type Service interface {
 	Start(ctx context.Context) (<-chan ObservedBlock, error)
-	Close(ctx context.Context)
+	Close()
 }
 
 type closeFunc func()
-type onDispatchFailureFunc func(ctx context.Context, dispatchFailure BlockDispatchFailure)
+type dispatchFailureHandler func(ctx context.Context, dispatchFailure BlockDispatchFailure)
 
 type service struct {
-	m         sync.Mutex
-	started   bool
+	mu        sync.Mutex
+	isStarted bool
 	closeFunc closeFunc
 
 	networks          map[string]Blockchain
 	checkpointStorage CheckpointStorage
 
-	retry             retry.Retry
-	onDispatchFailure onDispatchFailureFunc
+	retry                  retry.Retry
+	dispatchFailureHandler dispatchFailureHandler
 }
 
 var _ Service = (*service)(nil)
 
 func (s *service) Start(ctx context.Context) (<-chan ObservedBlock, error) {
-	s.m.Lock()
-	defer s.m.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	if s.started {
+	if s.isStarted {
 		return nil, ErrServiceAlreadyStarted
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
 
 	var (
-		recoveryCh   chan BlockDispatchFailure
-		errorCh      = make(chan BlockDispatchFailure, errorChannelBufferSize)
-		processingCh = make(chan ObservedBlock, processingChannelBufferSize)
+		retryFailureCh    chan BlockDispatchFailure
+		dispatchFailureCh = make(chan BlockDispatchFailure, dispatchFailureChannelBufferSize)
+		observedBlockCh   = make(chan ObservedBlock, observedBlockChannelBufferSize)
 	)
 
 	s.closeFunc = func() {
 		cancel()
-		close(processingCh)
-		if recoveryCh != nil {
-			close(recoveryCh)
+		close(observedBlockCh)
+		if retryFailureCh != nil {
+			close(retryFailureCh)
 		}
-		close(errorCh)
+		close(dispatchFailureCh)
 	}
 
-	s.startHandleDispatchFailures(ctx, errorCh)
+	s.startHandleDispatchFailures(ctx, dispatchFailureCh)
 
 	if s.retry != nil {
-		recoveryCh = make(chan BlockDispatchFailure, recoveryChannelBufferSize)
-		s.startRetryFailedBlockFetches(ctx, recoveryCh, processingCh, errorCh)
+		retryFailureCh = make(chan BlockDispatchFailure, retryFailureChannelBufferSize)
+		s.startRetryFailedBlockFetches(ctx, retryFailureCh, observedBlockCh, dispatchFailureCh)
 	}
 
-	errorSubmissionCh := cmp.Or(recoveryCh, errorCh)
-	if err := s.launchAllNetworkSubscriptions(ctx, processingCh, errorSubmissionCh); err != nil {
+	errorSubmissionCh := chflow.FirstNonNil(retryFailureCh, dispatchFailureCh)
+	if err := s.launchAllNetworkSubscriptions(ctx, observedBlockCh, errorSubmissionCh); err != nil {
 		s.closeFunc()
 		return nil, err
 	}
 
-	s.started = true
-	return processingCh, nil
+	s.isStarted = true
+	return observedBlockCh, nil
 }
 
-func (s *service) Close(ctx context.Context) {
-	s.m.Lock()
-	defer s.m.Unlock()
+func (s *service) Close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	s.closeFunc()
-	s.started = false
+	if s.closeFunc != nil {
+		s.closeFunc()
+	}
+	s.isStarted = false
 }
 
 type config struct {
-	retry             retry.Retry
-	checkpointStorage CheckpointStorage
-	onDispatchFailure onDispatchFailureFunc
+	retry                  retry.Retry
+	checkpointStorage      CheckpointStorage
+	dispatchFailureHandler dispatchFailureHandler
 }
 
 type Option func(*config)
 
 func New(networks map[string]Blockchain, opts ...Option) *service {
 	cfg := config{
-		retry:             nil,
-		checkpointStorage: nopCheckpoint{},
-		onDispatchFailure: defaultOnDispatchFailureFunc,
+		retry:                  nil,
+		checkpointStorage:      nopCheckpoint{},
+		dispatchFailureHandler: defaultOnDispatchFailure,
 	}
 	for _, opt := range opts {
 		opt(&cfg)
 	}
 
 	return &service{
-		networks:          networks,
-		checkpointStorage: cfg.checkpointStorage,
-		retry:             cfg.retry,
+		networks:               networks,
+		checkpointStorage:      cfg.checkpointStorage,
+		retry:                  cfg.retry,
+		dispatchFailureHandler: cfg.dispatchFailureHandler,
 	}
 }
 
-func defaultOnDispatchFailureFunc(ctx context.Context, dispatchFailure BlockDispatchFailure) {
+func defaultOnDispatchFailure(ctx context.Context, dispatchFailure BlockDispatchFailure) {
 	logger.Error(ctx, "block dispatch failure",
 		"block.network", dispatchFailure.Network,
 		"block.height", dispatchFailure.Height,
@@ -123,9 +126,9 @@ func defaultOnDispatchFailureFunc(ctx context.Context, dispatchFailure BlockDisp
 	)
 }
 
-func WithOnDispatchFailureFunc(f onDispatchFailureFunc) Option {
+func WithDispatchFailureHandler(f dispatchFailureHandler) Option {
 	return func(c *config) {
-		c.onDispatchFailure = f
+		c.dispatchFailureHandler = f
 	}
 }
 
