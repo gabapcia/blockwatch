@@ -265,6 +265,8 @@ func TestService_handleDispatchFailures(t *testing.T) {
 		// Track the context passed to the handler
 		var receivedCtx context.Context
 		var mu sync.Mutex
+		type testKeyType struct{}
+		var testKey testKeyType
 
 		// Create service with custom handler that captures context
 		svc := &service{
@@ -277,7 +279,7 @@ func TestService_handleDispatchFailures(t *testing.T) {
 
 		// Create channel and context with a value
 		dispatchErrCh := make(chan BlockDispatchFailure, 1)
-		ctx := context.WithValue(t.Context(), "test-key", "test-value")
+		ctx := context.WithValue(t.Context(), testKey, "test-value")
 
 		// Start handleDispatchFailures in a goroutine
 		done := make(chan struct{})
@@ -307,7 +309,7 @@ func TestService_handleDispatchFailures(t *testing.T) {
 		mu.Lock()
 		defer mu.Unlock()
 		require.NotNil(t, receivedCtx, "Handler should receive context")
-		assert.Equal(t, "test-value", receivedCtx.Value("test-key"), "Handler should receive the same context")
+		assert.Equal(t, "test-value", receivedCtx.Value(testKey), "Handler should receive the same context")
 	})
 
 	t.Run("processes failures in order", func(t *testing.T) {
