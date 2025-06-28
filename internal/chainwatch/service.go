@@ -93,6 +93,7 @@ func (s *service) Close(ctx context.Context) {
 type config struct {
 	retry             retry.Retry
 	checkpointStorage CheckpointStorage
+	onDispatchFailure onDispatchFailureFunc
 }
 
 type Option func(*config)
@@ -101,6 +102,7 @@ func New(networks map[string]Blockchain, opts ...Option) *service {
 	cfg := config{
 		retry:             nil,
 		checkpointStorage: nopCheckpoint{},
+		onDispatchFailure: defaultOnDispatchFailureFunc,
 	}
 	for _, opt := range opts {
 		opt(&cfg)
@@ -119,6 +121,12 @@ func defaultOnDispatchFailureFunc(ctx context.Context, dispatchFailure BlockDisp
 		"block.height", dispatchFailure.Height,
 		"block.errors", dispatchFailure.Errors,
 	)
+}
+
+func WithOnDispatchFailureFunc(f onDispatchFailureFunc) Option {
+	return func(c *config) {
+		c.onDispatchFailure = f
+	}
 }
 
 func WithRetry(r retry.Retry) Option {
