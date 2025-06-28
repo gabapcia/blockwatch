@@ -3,8 +3,8 @@
 package ethereum
 
 import (
+	"github.com/gabapcia/blockwatch/internal/chainwatch"
 	"github.com/gabapcia/blockwatch/internal/pkg/transport/jsonrpc"
-	"github.com/gabapcia/blockwatch/internal/watcher"
 )
 
 // client implements the watcher.Blockchain interface for Ethereum-based networks.
@@ -14,7 +14,7 @@ type client struct {
 }
 
 // Ensure client implements the watcher.Blockchain interface at compile time.
-var _ watcher.Blockchain = (*client)(nil)
+var _ chainwatch.Blockchain = (*client)(nil)
 
 // NewClient creates a new Ethereum blockchain client using the provided JSON-RPC connection.
 // The returned client can be used to listen for new blocks and interact with the network.

@@ -1,4 +1,4 @@
-package watcher
+package chainwatch
 
 import (
 	"context"

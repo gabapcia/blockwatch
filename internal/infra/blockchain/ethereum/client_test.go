@@ -3,10 +3,10 @@ package ethereum
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-
+	"github.com/gabapcia/blockwatch/internal/chainwatch"
 	jsonrpctest "github.com/gabapcia/blockwatch/internal/pkg/transport/jsonrpc/mocks"
-	"github.com/gabapcia/blockwatch/internal/watcher"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNewClient(t *testing.T) {
@@ -18,6 +18,6 @@ func TestNewClient(t *testing.T) {
 		assert.Equal(t, mockConn, c.conn, "conn field should be assigned correctly")
 
 		// Compile-time interface check
-		var _ watcher.Blockchain = c
+		var _ chainwatch.Blockchain = c
 	})
 }

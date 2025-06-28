@@ -1,4 +1,4 @@
-package watcher
+package chainwatch
 
 import (
 	"cmp"
@@ -37,7 +37,7 @@ func (s *service) Start(ctx context.Context) error {
 	var (
 		recoveryCh   chan BlockDispatchFailure
 		errorCh      = make(chan BlockDispatchFailure, errorChannelBufferSize)
-		processingCh = make(chan blockProcessingState, processingChannelBufferSize)
+		processingCh = make(chan ObservedBlock, processingChannelBufferSize)
 	)
 	defer close(errorCh)
 	defer close(processingCh)
@@ -58,7 +58,7 @@ func (s *service) Start(ctx context.Context) error {
 		return err
 	}
 
-	return s.process(ctx, processingCh)
+	return nil
 }
 
 func NewService(checkpointStorage CheckpointStorage, networks map[string]Blockchain, retry retry.Retry) *service {
