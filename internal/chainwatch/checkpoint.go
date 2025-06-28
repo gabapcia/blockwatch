@@ -32,3 +32,18 @@ type CheckpointStorage interface {
 	// ctx controls cancellation and deadlines for any underlying I/O.
 	LoadLatestCheckpoint(ctx context.Context, network string) (types.Hex, error)
 }
+
+// nopCheckpoint is a no-op implementation of CheckpointStorage.
+// It performs no persistence and always returns ErrNoCheckpointFound
+// when loading checkpoints.
+type nopCheckpoint struct{}
+
+// SaveCheckpoint is a no-op. It accepts the checkpoint input but does not store anything.
+func (nopCheckpoint) SaveCheckpoint(_ context.Context, _ string, _ types.Hex) error {
+	return nil
+}
+
+// LoadLatestCheckpoint always returns ErrNoCheckpointFound, as no state is persisted.
+func (nopCheckpoint) LoadLatestCheckpoint(_ context.Context, _ string) (types.Hex, error) {
+	return "", ErrNoCheckpointFound
+}
