@@ -1,10 +1,10 @@
 # ChainWatch Package
 
-The `chainwatch` package provides a robust, multi-blockchain block streaming service with built-in resilience features. It serves as the core monitoring component within the blockwatch project, designed to observe multiple blockchain networks simultaneously while handling failures gracefully.
+The `chainwatch` package provides a robust, multi-blockchain block streaming service with built-in resilience features and flexible data transformation capabilities. It serves as the core monitoring component within the blockwatch project, designed to observe multiple blockchain networks simultaneously while handling failures gracefully and transforming block data into custom formats.
 
 ## Package Overview
 
-ChainWatch is a streaming service that subscribes to blockchain networks and emits observed blocks through a unified interface. It abstracts away the complexities of network failures, retry logic, and checkpoint management, providing a clean stream of blockchain events to consumers.
+ChainWatch is a streaming service that subscribes to blockchain networks and emits observed blocks or transformed data through a unified interface. It abstracts away the complexities of network failures, retry logic, checkpoint management, and data transformation, providing a clean stream of blockchain events or custom data structures to consumers.
 
 ## Architecture
 
@@ -37,14 +37,16 @@ ChainWatch is a streaming service that subscribes to blockchain networks and emi
 
 ### Service Interface
 ```go
-type Service interface {
-    // Start begins the block observation process and returns a channel of observed blocks
-    Start(ctx context.Context) (<-chan ObservedBlock, error)
+type Service[T any] interface {
+    // Start begins the block observation process and returns a channel of observed blocks or transformed data
+    Start(ctx context.Context) (<-chan T, error)
     
     // Close terminates all background processes and cleans up resources
     Close()
 }
 ```
+
+The Service interface is generic, allowing you to specify the output type `T`. This enables transformation of raw `ObservedBlock` data into custom formats that better suit your application's needs.
 
 ### Blockchain Interface
 The package depends on implementations of the `Blockchain` interface to provide blockchain data:
@@ -109,10 +111,16 @@ type BlockchainEvent struct {
 ## How It Works
 
 ### 1. Initialization
-The service is created with a map of network names to `Blockchain` implementations:
+The service can be created in two ways:
 
+**Standard Service (ObservedBlock output):**
 ```go
 service := chainwatch.New(networks, options...)
+```
+
+**Service with Custom Transform:**
+```go
+service := chainwatch.NewWithTransform(networks, transformFunc, options...)
 ```
 
 ### 2. Block Streaming Process
@@ -120,13 +128,23 @@ service := chainwatch.New(networks, options...)
 1. **Checkpoint Recovery**: For each network, load the last processed block height
 2. **Subscription Setup**: Start streaming from the next block after the checkpoint
 3. **Event Processing**: Handle incoming blockchain events:
-   - **Success**: Convert to `ObservedBlock` and emit to output channel
+   - **Success**: Convert to `ObservedBlock` and proceed to transformation stage
    - **Failure**: Send to retry system (if configured) or failure handler
 4. **Retry Logic**: Attempt to recover failed block fetches
-5. **Checkpoint Updates**: Save progress for successful blocks (if configured)
+5. **Checkpoint & Transform**: Save progress for successful blocks, then transform data
+6. **Output Delivery**: Emit transformed data to the output channel
 
-### 3. Output Stream
-The service provides a unified stream of `ObservedBlock` events from all monitored networks.
+### 3. Data Transformation Pipeline
+
+The service includes a transformation pipeline that processes blocks in this order:
+
+1. **Raw Block Ingestion**: Blocks are received from blockchain subscriptions
+2. **Checkpoint Persistence**: Block progress is saved (if checkpoint storage is configured)
+3. **Data Transformation**: Blocks are transformed using the provided transform function
+4. **Output Delivery**: Transformed data is delivered to consumers
+
+### 4. Output Stream
+The service provides a unified stream of transformed data (type `T`) from all monitored networks.
 
 ## Usage
 
@@ -139,7 +157,7 @@ networks := map[string]chainwatch.Blockchain{
     "polygon":  polygonClient,
 }
 
-// Create service
+// Create service (returns ObservedBlock)
 service := chainwatch.New(networks)
 
 // Start monitoring
@@ -157,9 +175,51 @@ for block := range blocksCh {
 }
 ```
 
+### Usage with Custom Transform
+
+```go
+// Define a custom output type
+type BlockSummary struct {
+    Network     string
+    Height      string
+    Hash        string
+    TxCount     int
+    ProcessedAt time.Time
+}
+
+// Create transform function
+transformFunc := func(ob chainwatch.ObservedBlock) BlockSummary {
+    return BlockSummary{
+        Network:     ob.Network,
+        Height:      ob.Height.String(),
+        Hash:        ob.Hash,
+        TxCount:     len(ob.Transactions),
+        ProcessedAt: time.Now(),
+    }
+}
+
+// Create service with transform
+service := chainwatch.NewWithTransform(networks, transformFunc)
+
+// Start monitoring
+ctx := context.Background()
+summariesCh, err := service.Start(ctx)
+if err != nil {
+    return err
+}
+defer service.Close()
+
+// Process transformed data
+for summary := range summariesCh {
+    fmt.Printf("Summary: %s block %s with %d transactions\n", 
+        summary.Network, summary.Height, summary.TxCount)
+}
+```
+
 ### Advanced Configuration
 
 ```go
+// Standard service with advanced options
 service := chainwatch.New(networks,
     // Configure retry strategy
     chainwatch.WithRetry(retryStrategy),
@@ -172,6 +232,13 @@ service := chainwatch.New(networks,
         log.Printf("Persistent failure: network=%s height=%s errors=%v", 
             failure.Network, failure.Height, failure.Errors)
     }),
+)
+
+// Service with transform and advanced options
+service := chainwatch.NewWithTransform(networks, transformFunc,
+    chainwatch.WithRetry(retryStrategy),
+    chainwatch.WithCheckpointStorage(storage),
+    chainwatch.WithDispatchFailureHandler(customFailureHandler),
 )
 ```
 
@@ -215,6 +282,12 @@ type BlockDispatchFailure struct {
 
 ## Features
 
+### Data Transformation
+- **Generic Output Types**: Transform blocks into any custom data structure
+- **Flexible Processing**: Apply business logic during the transformation stage
+- **Type Safety**: Compile-time type checking for transformed outputs
+- **Pipeline Architecture**: Clean separation between ingestion, checkpointing, and transformation
+
 ### Resilience
 - **Retry Logic**: Configurable retry strategies for transient failures
 - **Error Isolation**: Network failures don't affect other networks
@@ -224,11 +297,13 @@ type BlockDispatchFailure struct {
 - **Concurrent Processing**: Each network runs independently
 - **Buffered Channels**: Configurable buffer sizes for optimal throughput
 - **Resource Management**: Proper cleanup and resource management
+- **Asynchronous Transformation**: Non-blocking data transformation pipeline
 
 ### Reliability
 - **Checkpoint System**: Resume from last processed block after restarts
 - **No Data Loss**: Failed blocks are tracked and retried
 - **Context Cancellation**: Proper cancellation handling throughout
+- **Transform Isolation**: Transformation errors don't affect checkpointing
 
 ## Thread Safety
 
@@ -247,6 +322,60 @@ The package has minimal external dependencies:
 
 ## Integration
 
-This package is designed to be used within the larger blockwatch project as the core blockchain monitoring component. It provides a clean abstraction over multiple blockchain networks while handling the complexities of network failures and state management.
+This package is designed to be used within the larger blockwatch project as the core blockchain monitoring component. It provides a clean abstraction over multiple blockchain networks while handling the complexities of network failures, state management, and data transformation.
 
 The package expects blockchain implementations to be provided by other components in the project (e.g., `internal/infra/blockchain/ethereum`) and can optionally integrate with storage backends for checkpoint persistence.
+
+### Transform Function Examples
+
+**Extract Transaction Hashes:**
+```go
+transformFunc := func(ob chainwatch.ObservedBlock) []string {
+    hashes := make([]string, len(ob.Transactions))
+    for i, tx := range ob.Transactions {
+        hashes[i] = tx.Hash
+    }
+    return hashes
+}
+```
+
+**Create Metrics:**
+```go
+type BlockMetrics struct {
+    Network        string
+    Height         uint64
+    TransactionCount int
+    Timestamp      time.Time
+}
+
+transformFunc := func(ob chainwatch.ObservedBlock) BlockMetrics {
+    height, _ := strconv.ParseUint(ob.Height.String(), 0, 64)
+    return BlockMetrics{
+        Network:          ob.Network,
+        Height:           height,
+        TransactionCount: len(ob.Transactions),
+        Timestamp:        time.Now(),
+    }
+}
+```
+
+**Filter and Enrich:**
+```go
+type EnrichedBlock struct {
+    chainwatch.ObservedBlock
+    ProcessingLatency time.Duration
+    IsHighActivity    bool
+}
+
+transformFunc := func(ob chainwatch.ObservedBlock) *EnrichedBlock {
+    if len(ob.Transactions) < 10 {
+        return nil // Filter out low-activity blocks
+    }
+    
+    return &EnrichedBlock{
+        ObservedBlock:     ob,
+        ProcessingLatency: time.Since(startTime),
+        IsHighActivity:    len(ob.Transactions) > 100,
+    }
+}
+```

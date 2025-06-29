@@ -67,14 +67,23 @@ type service[T any] struct {
 // Compile-time check to ensure *service implements the Service interface.
 var _ Service[ObservedBlock] = (*service[ObservedBlock])(nil)
 
-// checkpointAndForward reads ObservedBlock values from blockIn,
-// saves a checkpoint for each block, applies transformation, and forwards them to transformedOut.
+// checkpointAndForward is a processing stage that guarantees checkpoint persistence
+// for each successfully received ObservedBlock before transforming and forwarding it.
 //
-// This function ensures that every successfully observed block has its height
-// saved as a checkpoint before being transformed and sent to downstream consumers.
+// It continuously reads from blockIn until the channel is closed or the context is canceled.
+// For each block received:
+//  1. A checkpoint is saved using the configured CheckpointStorage.
+//  2. The block is transformed into type T using the transformFunc.
+//  3. The result is forwarded to the transformedOut channel.
 //
-// blockIn and transformedOut are managed by the caller and must be closed appropriately.
-// Panics if transformFunc is nil (indicates an internal package bug).
+// If saving a checkpoint fails, the error is logged and the block is skipped.
+// The function will exit cleanly when:
+//   - The input channel is closed, or
+//   - The context is canceled, or
+//   - Sending to transformedOut fails due to context cancellation.
+//
+// This function must only be called with a non-nil transformFunc. If it's nil, the function will panic.
+// The output channel is not closed by this function — ownership of its lifecycle is delegated to the caller.
 func (s *service[T]) checkpointAndForward(ctx context.Context, blockIn <-chan ObservedBlock, transformedOut chan<- T) {
 	for {
 		observedBlock, ok := chflow.Receive(ctx, blockIn)
@@ -103,9 +112,23 @@ func (s *service[T]) checkpointAndForward(ctx context.Context, blockIn <-chan Ob
 	}
 }
 
-// startCheckpointAndForward launches checkpointAndForward
-// in a background goroutine. It returns immediately, leaving the processor running
-// until blockIn is closed or ctx is canceled.
+// startCheckpointAndForward starts the checkpointAndForward function in a new goroutine,
+// allowing asynchronous processing of ObservedBlock values.
+//
+// This stage sits between internal block ingestion and final delivery to clients.
+// It ensures that checkpoints are persisted for each block before forwarding the transformed result.
+//
+// Parameters:
+//   - ctx: controls cancellation of the processing goroutine.
+//   - blockIn: channel from which raw ObservedBlocks are consumed.
+//   - transformedOut: channel to which transformed outputs of type T are sent.
+//
+// This function returns immediately and does not block the caller.
+// The processing loop will continue running in the background until:
+//   - The context is canceled, or
+//   - The input channel is closed.
+//
+// It is the caller's responsibility to close `blockIn` and `transformedOut` at the appropriate time.
 func (s *service[T]) startCheckpointAndForward(ctx context.Context, blockIn <-chan ObservedBlock, transformedOut chan<- T) {
 	go s.checkpointAndForward(ctx, blockIn, transformedOut)
 }
@@ -187,11 +210,6 @@ type config struct {
 	dispatchFailureHandler dispatchFailureHandler // user-defined handler for unrecoverable dispatch errors
 }
 
-// defaultTransformFunc is the default transformation function that returns the ObservedBlock as-is.
-func defaultTransformFunc(ob ObservedBlock) ObservedBlock {
-	return ob
-}
-
 // Option defines a functional option for configuring a Service instance.
 // It is applied inside the New constructor.
 type Option func(*config)
@@ -253,6 +271,11 @@ func NewWithTransform[T any](networks map[string]Blockchain, transformFunc trans
 		dispatchFailureHandler: cfg.dispatchFailureHandler,
 		transformFunc:          transformFunc,
 	}
+}
+
+// defaultTransformFunc is the default transformation function that returns the ObservedBlock as-is.
+func defaultTransformFunc(ob ObservedBlock) ObservedBlock {
+	return ob
 }
 
 // defaultOnDispatchFailure is the default handler used when the user does not provide one.
