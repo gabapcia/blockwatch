@@ -67,23 +67,26 @@ type service[T any] struct {
 // Compile-time check to ensure *service implements the Service interface.
 var _ Service[ObservedBlock] = (*service[ObservedBlock])(nil)
 
-// checkpointAndForward is a processing stage that guarantees checkpoint persistence
-// for each successfully received ObservedBlock before transforming and forwarding it.
+// checkpointAndForward is a processing stage that ensures checkpoint persistence
+// for each received ObservedBlock before transforming and forwarding it.
 //
 // It continuously reads from blockIn until the channel is closed or the context is canceled.
 // For each block received:
-//  1. A checkpoint is saved using the configured CheckpointStorage.
-//  2. The block is transformed into type T using the transformFunc.
-//  3. The result is forwarded to the transformedOut channel.
+//  1. A checkpoint is attempted using the configured CheckpointStorage.
+//  2. If the checkpoint save fails, the error is logged, but the block is still processed.
+//  3. The block is transformed into type T using the transformFunc.
+//  4. The result is forwarded to the transformedOut channel.
 //
-// If saving a checkpoint fails, the error is logged and the block is skipped.
-// The function will exit cleanly when:
-//   - The input channel is closed, or
+// Failures to persist the checkpoint do not interrupt processing — the system logs the failure
+// and continues to the transformation and forwarding steps.
+//
+// The function exits cleanly when:
+//   - The input channel is closed,
 //   - The context is canceled, or
 //   - Sending to transformedOut fails due to context cancellation.
 //
-// This function must only be called with a non-nil transformFunc. If it's nil, the function will panic.
-// The output channel is not closed by this function — ownership of its lifecycle is delegated to the caller.
+// This function must only be called with a non-nil transformFunc. If it's nil, it panics.
+// The output channel is not closed by this function — the caller is responsible for managing its lifecycle.
 func (s *service[T]) checkpointAndForward(ctx context.Context, blockIn <-chan ObservedBlock, transformedOut chan<- T) {
 	for {
 		observedBlock, ok := chflow.Receive(ctx, blockIn)
@@ -99,7 +102,6 @@ func (s *service[T]) checkpointAndForward(ctx context.Context, blockIn <-chan Ob
 				"block.height", observedBlock.Height,
 				"error", err,
 			)
-			continue
 		}
 
 		// Transform the block using the provided transform function
