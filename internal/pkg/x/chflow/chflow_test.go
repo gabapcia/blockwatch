@@ -252,3 +252,38 @@ func TestReceiveAndSendIntegration(t *testing.T) {
 		close(input)
 	})
 }
+
+func TestFirstNonNil(t *testing.T) {
+	t.Run("all nil channels", func(t *testing.T) {
+		channels := []chan int{nil, nil, nil}
+		got := FirstNonNil(channels...)
+		assert.Nil(t, got, "FirstNonNil() should return nil when all channels are nil")
+	})
+
+	t.Run("first channel non-nil", func(t *testing.T) {
+		ch1 := make(chan int)
+		channels := []chan int{ch1, nil, nil}
+		got := FirstNonNil(channels...)
+		assert.NotNil(t, got, "FirstNonNil() should return non-nil channel when first channel is non-nil")
+	})
+
+	t.Run("middle channel non-nil", func(t *testing.T) {
+		ch2 := make(chan int)
+		channels := []chan int{nil, ch2, nil}
+		got := FirstNonNil(channels...)
+		assert.NotNil(t, got, "FirstNonNil() should return non-nil channel when middle channel is non-nil")
+	})
+
+	t.Run("last channel non-nil", func(t *testing.T) {
+		ch3 := make(chan int)
+		channels := []chan int{nil, nil, ch3}
+		got := FirstNonNil(channels...)
+		assert.NotNil(t, got, "FirstNonNil() should return non-nil channel when last channel is non-nil")
+	})
+
+	t.Run("empty list", func(t *testing.T) {
+		channels := []chan int{}
+		got := FirstNonNil(channels...)
+		assert.Nil(t, got, "FirstNonNil() should return nil for an empty list of channels")
+	})
+}

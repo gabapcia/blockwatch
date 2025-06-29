@@ -27,3 +27,16 @@ func Send[T any](ctx context.Context, ch chan<- T, data T) bool {
 		return true
 	}
 }
+
+// FirstNonNil returns the first non-nil channel from the provided list of channels.
+// If all channels are nil, it returns nil. This function is useful for selecting
+// the first available channel in a list of optional channels.
+func FirstNonNil[T any](chs ...chan T) chan T {
+	for _, ch := range chs {
+		if ch != nil {
+			return ch
+		}
+	}
+
+	return nil
+}
