@@ -58,7 +58,7 @@ type BlockDispatchFailure struct {
 //
 // This method blocks until dispatchErrCh is closed or ctx is canceled.
 // If no handler is set, failures are silently ignored.
-func (s *service) handleDispatchFailures(ctx context.Context, dispatchErrCh <-chan BlockDispatchFailure) {
+func (s *service[T]) handleDispatchFailures(ctx context.Context, dispatchErrCh <-chan BlockDispatchFailure) {
 	for {
 		dispatchFailure, ok := chflow.Receive(ctx, dispatchErrCh)
 		if !ok {
@@ -76,7 +76,7 @@ func (s *service) handleDispatchFailures(ctx context.Context, dispatchErrCh <-ch
 // It immediately returns, leaving the handler running until dispatchErrCh is closed
 // or ctx is canceled. This function is typically called during startup to ensure that
 // persistent dispatch errors are properly handled.
-func (s *service) startHandleDispatchFailures(ctx context.Context, dispatchErrCh <-chan BlockDispatchFailure) {
+func (s *service[T]) startHandleDispatchFailures(ctx context.Context, dispatchErrCh <-chan BlockDispatchFailure) {
 	go s.handleDispatchFailures(ctx, dispatchErrCh)
 }
 
@@ -89,7 +89,7 @@ func (s *service) startHandleDispatchFailures(ctx context.Context, dispatchErrCh
 //
 // retryCh, recoveredCh, and finalErrorCh are shared global channels; this function
 // does not close any of them.
-func (s *service) retryFailedBlockFetches(ctx context.Context, retryCh <-chan BlockDispatchFailure, recoveredCh chan<- ObservedBlock, finalErrorCh chan<- BlockDispatchFailure) {
+func (s *service[T]) retryFailedBlockFetches(ctx context.Context, retryCh <-chan BlockDispatchFailure, recoveredCh chan<- ObservedBlock, finalErrorCh chan<- BlockDispatchFailure) {
 	for {
 		netErr, ok := chflow.Receive(ctx, retryCh)
 		if !ok {
@@ -128,7 +128,7 @@ func (s *service) retryFailedBlockFetches(ctx context.Context, retryCh <-chan Bl
 // retryFailedBlockFetches. It returns immediately, leaving the retry loop
 // running until retryCh is closed or ctx is canceled.
 // retryCh, recoveredCh, and finalErrorCh must be closed by the caller.
-func (s *service) startRetryFailedBlockFetches(ctx context.Context, retryCh <-chan BlockDispatchFailure, recoveredCh chan<- ObservedBlock, finalErrorCh chan<- BlockDispatchFailure) {
+func (s *service[T]) startRetryFailedBlockFetches(ctx context.Context, retryCh <-chan BlockDispatchFailure, recoveredCh chan<- ObservedBlock, finalErrorCh chan<- BlockDispatchFailure) {
 	go s.retryFailedBlockFetches(ctx, retryCh, recoveredCh, finalErrorCh)
 }
 
@@ -137,7 +137,7 @@ func (s *service) startRetryFailedBlockFetches(ctx context.Context, retryCh <-ch
 //   - On success, sends a ObservedBlock to blocksCh.
 //
 // blocksCh and errorsCh are global shared channels and must be closed by the caller.
-func (s *service) dispatchSubscriptionEvents(ctx context.Context, network string, eventsCh <-chan BlockchainEvent, blocksCh chan<- ObservedBlock, errorsCh chan<- BlockDispatchFailure) {
+func (s *service[T]) dispatchSubscriptionEvents(ctx context.Context, network string, eventsCh <-chan BlockchainEvent, blocksCh chan<- ObservedBlock, errorsCh chan<- BlockDispatchFailure) {
 	for {
 		event, ok := chflow.Receive(ctx, eventsCh)
 		if !ok {
@@ -173,7 +173,7 @@ func (s *service) dispatchSubscriptionEvents(ctx context.Context, network string
 //
 // blocksCh and errorsCh are global shared channels and must be managed and closed by the caller.
 // Returns an error if any initial subscription or checkpoint load (aside from no-checkpoint) fails.
-func (s *service) launchAllNetworkSubscriptions(ctx context.Context, blocksCh chan<- ObservedBlock, errorsCh chan<- BlockDispatchFailure) error {
+func (s *service[T]) launchAllNetworkSubscriptions(ctx context.Context, blocksCh chan<- ObservedBlock, errorsCh chan<- BlockDispatchFailure) error {
 	for network, client := range s.networks {
 		startHeight, err := s.checkpointStorage.LoadLatestCheckpoint(ctx, network)
 		if err != nil && !errors.Is(err, ErrNoCheckpointFound) {

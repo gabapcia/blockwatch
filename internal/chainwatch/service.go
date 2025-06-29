@@ -23,13 +23,13 @@ const (
 
 // Service represents a chainwatch streaming component responsible for subscribing
 // to one or more blockchain networks, handling block retrieval, retry logic,
-// and emitting observed blocks for downstream consumers.
-type Service interface {
-	// Start begins the block observation process and returns a channel of observed blocks.
+// and emitting observed blocks or transformed data for downstream consumers.
+type Service[T any] interface {
+	// Start begins the block observation process and returns a channel of observed blocks or transformed data.
 	//
 	// It must be called only once; calling Start again returns ErrServiceAlreadyStarted.
 	// The returned channel is closed only when Close is called or the context is canceled.
-	Start(ctx context.Context) (<-chan ObservedBlock, error)
+	Start(ctx context.Context) (<-chan T, error)
 
 	// Close terminates all background processes, closes internal channels,
 	// and makes the Service eligible for reinitialization if desired.
@@ -45,9 +45,13 @@ type closeFunc func()
 // (i.e., sending a fetched block for processing) fails and cannot be recovered.
 type dispatchFailureHandler func(ctx context.Context, dispatchFailure BlockDispatchFailure)
 
+// transformFunc is an optional user-defined function that transforms an ObservedBlock into type T.
+// If nil, the ObservedBlock is sent as-is (T must be ObservedBlock in this case).
+type transformFunc[T any] func(ObservedBlock) T
+
 // service is the internal implementation of the Service interface.
 // It orchestrates subscriptions, retries, and block delivery for multiple blockchain networks.
-type service struct {
+type service[T any] struct {
 	mu        sync.Mutex // protects lifecycle state
 	isStarted bool       // indicates whether Start was called
 	closeFunc closeFunc  // cancels background routines and cleans up channels
@@ -57,19 +61,63 @@ type service struct {
 
 	retry                  retry.Retry            // optional retry logic for failed block fetches
 	dispatchFailureHandler dispatchFailureHandler // user-defined callback for unrecoverable dispatch errors
+	transformFunc          transformFunc[T]       // optional transformation function from ObservedBlock to T
 }
 
 // Compile-time check to ensure *service implements the Service interface.
-var _ Service = (*service)(nil)
+var _ Service[ObservedBlock] = (*service[ObservedBlock])(nil)
+
+// processObservedBlocksWithCheckpoints reads ObservedBlock values from inputCh,
+// saves a checkpoint for each block, applies transformation, and forwards them to outputCh.
+//
+// This function ensures that every successfully observed block has its height
+// saved as a checkpoint before being transformed and sent to downstream consumers.
+//
+// inputCh and outputCh are managed by the caller and must be closed appropriately.
+// Panics if transformFunc is nil (indicates an internal package bug).
+func (s *service[T]) processObservedBlocksWithCheckpoints(ctx context.Context, inputCh <-chan ObservedBlock, outputCh chan<- T) {
+	for {
+		observedBlock, ok := chflow.Receive(ctx, inputCh)
+		if !ok {
+			return
+		}
+
+		// Save checkpoint before forwarding the block
+		if err := s.checkpointStorage.SaveCheckpoint(ctx, observedBlock.Network, observedBlock.Height); err != nil {
+			// Log the error but continue processing - checkpoint failure shouldn't stop block processing
+			logger.Error(ctx, "failed to save checkpoint",
+				"block.network", observedBlock.Network,
+				"block.height", observedBlock.Height,
+				"error", err,
+			)
+			continue
+		}
+
+		// Transform the block using the provided transform function
+		output := s.transformFunc(observedBlock)
+
+		// Forward the transformed output to the final output channel
+		if ok := chflow.Send(ctx, outputCh, output); !ok {
+			return
+		}
+	}
+}
+
+// startProcessObservedBlocksWithCheckpoints launches processObservedBlocksWithCheckpoints
+// in a background goroutine. It returns immediately, leaving the processor running
+// until inputCh is closed or ctx is canceled.
+func (s *service[T]) startProcessObservedBlocksWithCheckpoints(ctx context.Context, inputCh <-chan ObservedBlock, outputCh chan<- T) {
+	go s.processObservedBlocksWithCheckpoints(ctx, inputCh, outputCh)
+}
 
 // Start initializes all subscriptions for registered networks,
-// starts retry and dispatch failure handlers, and returns a channel of observed blocks.
+// starts retry and dispatch failure handlers, and returns a channel of transformed data.
 //
-// The returned channel emits ObservedBlock values as new blocks are fetched and verified.
+// The returned channel emits transformed values as new blocks are fetched and verified.
 // If the service was already started, Start returns ErrServiceAlreadyStarted.
 //
 // The caller is responsible for eventually calling Close to clean up resources.
-func (s *service) Start(ctx context.Context) (<-chan ObservedBlock, error) {
+func (s *service[T]) Start(ctx context.Context) (<-chan T, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -80,14 +128,16 @@ func (s *service) Start(ctx context.Context) (<-chan ObservedBlock, error) {
 	ctx, cancel := context.WithCancel(ctx)
 
 	var (
-		retryFailureCh    chan BlockDispatchFailure
-		dispatchFailureCh = make(chan BlockDispatchFailure, dispatchFailureChannelBufferSize)
-		observedBlockCh   = make(chan ObservedBlock, observedBlockChannelBufferSize)
+		retryFailureCh          chan BlockDispatchFailure
+		dispatchFailureCh       = make(chan BlockDispatchFailure, dispatchFailureChannelBufferSize)
+		internalObservedBlockCh = make(chan ObservedBlock, observedBlockChannelBufferSize)
+		outputCh                = make(chan T, observedBlockChannelBufferSize)
 	)
 
 	s.closeFunc = func() {
 		cancel()
-		close(observedBlockCh)
+		close(internalObservedBlockCh)
+		close(outputCh)
 		if retryFailureCh != nil {
 			close(retryFailureCh)
 		}
@@ -98,24 +148,27 @@ func (s *service) Start(ctx context.Context) (<-chan ObservedBlock, error) {
 
 	if s.retry != nil {
 		retryFailureCh = make(chan BlockDispatchFailure, retryFailureChannelBufferSize)
-		s.startRetryFailedBlockFetches(ctx, retryFailureCh, observedBlockCh, dispatchFailureCh)
+		s.startRetryFailedBlockFetches(ctx, retryFailureCh, internalObservedBlockCh, dispatchFailureCh)
 	}
 
+	// Start the checkpoint processor that sits between internal processing and final output
+	s.startProcessObservedBlocksWithCheckpoints(ctx, internalObservedBlockCh, outputCh)
+
 	errorSubmissionCh := chflow.FirstNonNil(retryFailureCh, dispatchFailureCh)
-	if err := s.launchAllNetworkSubscriptions(ctx, observedBlockCh, errorSubmissionCh); err != nil {
+	if err := s.launchAllNetworkSubscriptions(ctx, internalObservedBlockCh, errorSubmissionCh); err != nil {
 		s.closeFunc()
 		return nil, err
 	}
 
 	s.isStarted = true
-	return observedBlockCh, nil
+	return outputCh, nil
 }
 
 // Close shuts down the service, cancels all active routines, and closes internal channels.
 //
 // It is safe to call Close even if the service was never started.
 // After calling Close, the Service can be safely discarded.
-func (s *service) Close() {
+func (s *service[T]) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -134,11 +187,16 @@ type config struct {
 	dispatchFailureHandler dispatchFailureHandler // user-defined handler for unrecoverable dispatch errors
 }
 
+// defaultTransformFunc is the default transformation function that returns the ObservedBlock as-is.
+func defaultTransformFunc(ob ObservedBlock) ObservedBlock {
+	return ob
+}
+
 // Option defines a functional option for configuring a Service instance.
 // It is applied inside the New constructor.
 type Option func(*config)
 
-// New creates a new instance of the chainwatch service.
+// New creates a new instance of the chainwatch service that returns ObservedBlock values.
 //
 // It requires a map of network identifiers to Blockchain clients.
 // Optional behavior like retry logic, checkpoint persistence, and error handling
@@ -148,7 +206,8 @@ type Option func(*config)
 //   - No retry logic (retry = nil)
 //   - No persistent checkpointing (uses a no-op CheckpointStorage)
 //   - Dispatch failures are logged using the default logger
-func New(networks map[string]Blockchain, opts ...Option) *service {
+//   - Transform function returns ObservedBlock as-is
+func New(networks map[string]Blockchain, opts ...Option) *service[ObservedBlock] {
 	cfg := config{
 		retry:                  nil,
 		checkpointStorage:      nopCheckpoint{},
@@ -158,11 +217,41 @@ func New(networks map[string]Blockchain, opts ...Option) *service {
 		opt(&cfg)
 	}
 
-	return &service{
+	return &service[ObservedBlock]{
 		networks:               networks,
 		checkpointStorage:      cfg.checkpointStorage,
 		retry:                  cfg.retry,
 		dispatchFailureHandler: cfg.dispatchFailureHandler,
+		transformFunc:          defaultTransformFunc,
+	}
+}
+
+// NewWithTransform creates a new instance of the chainwatch service with a custom transform function.
+//
+// It requires a map of network identifiers to Blockchain clients and a transform function.
+// Optional behavior like retry logic, checkpoint persistence, and error handling
+// can be customized via the provided Option functions.
+//
+// Defaults:
+//   - No retry logic (retry = nil)
+//   - No persistent checkpointing (uses a no-op CheckpointStorage)
+//   - Dispatch failures are logged using the default logger
+func NewWithTransform[T any](networks map[string]Blockchain, transformFunc transformFunc[T], opts ...Option) *service[T] {
+	cfg := config{
+		retry:                  nil,
+		checkpointStorage:      nopCheckpoint{},
+		dispatchFailureHandler: defaultOnDispatchFailure,
+	}
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	return &service[T]{
+		networks:               networks,
+		checkpointStorage:      cfg.checkpointStorage,
+		retry:                  cfg.retry,
+		dispatchFailureHandler: cfg.dispatchFailureHandler,
+		transformFunc:          transformFunc,
 	}
 }
 

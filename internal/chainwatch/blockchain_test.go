@@ -22,7 +22,7 @@ func TestService_handleDispatchFailures(t *testing.T) {
 		var mu sync.Mutex
 
 		// Create service with custom handler
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
 				mu.Lock()
 				defer mu.Unlock()
@@ -98,7 +98,7 @@ func TestService_handleDispatchFailures(t *testing.T) {
 
 	t.Run("ignores failures when no handler is set", func(t *testing.T) {
 		// Create service with no handler
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			dispatchFailureHandler: nil,
 		}
 
@@ -147,7 +147,7 @@ func TestService_handleDispatchFailures(t *testing.T) {
 		var mu sync.Mutex
 
 		// Create service with custom handler
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
 				mu.Lock()
 				defer mu.Unlock()
@@ -198,7 +198,7 @@ func TestService_handleDispatchFailures(t *testing.T) {
 
 	t.Run("returns when channel is closed", func(t *testing.T) {
 		// Create service with handler
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
 				// Handler implementation doesn't matter for this test
 			},
@@ -229,7 +229,7 @@ func TestService_handleDispatchFailures(t *testing.T) {
 
 	t.Run("handles empty channel gracefully", func(t *testing.T) {
 		// Create service with handler
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
 				t.Fatal("Handler should not be called for empty channel")
 			},
@@ -269,7 +269,7 @@ func TestService_handleDispatchFailures(t *testing.T) {
 		var testKey testKeyType
 
 		// Create service with custom handler that captures context
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
 				mu.Lock()
 				defer mu.Unlock()
@@ -318,7 +318,7 @@ func TestService_handleDispatchFailures(t *testing.T) {
 		var mu sync.Mutex
 
 		// Create service with custom handler that tracks order
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
 				mu.Lock()
 				defer mu.Unlock()
@@ -374,7 +374,7 @@ func TestService_handleDispatchFailures(t *testing.T) {
 
 	t.Run("handler panic does not crash function", func(t *testing.T) {
 		// Create service with handler that panics
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
 				panic("handler panic")
 			},
@@ -422,7 +422,7 @@ func TestService_startHandleDispatchFailures(t *testing.T) {
 		var mu sync.Mutex
 
 		// Create service with custom handler
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
 				mu.Lock()
 				defer mu.Unlock()
@@ -461,7 +461,7 @@ func TestService_startHandleDispatchFailures(t *testing.T) {
 
 	t.Run("function returns immediately", func(t *testing.T) {
 		// Create service
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
 				// Handler implementation doesn't matter for this test
 			},
@@ -491,7 +491,7 @@ func TestService_startHandleDispatchFailures(t *testing.T) {
 		var mu sync.Mutex
 
 		// Create service with custom handler
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
 				mu.Lock()
 				defer mu.Unlock()
@@ -534,7 +534,7 @@ func TestService_startHandleDispatchFailures(t *testing.T) {
 		var mu sync.Mutex
 
 		// Create service with custom handler that includes a unique identifier
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
 				mu.Lock()
 				defer mu.Unlock()
@@ -590,7 +590,7 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		blockchainMock := NewBlockchainMock(t)
 
 		// Create service with mocked dependencies
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			networks: map[string]Blockchain{
 				"ethereum": blockchainMock,
 			},
@@ -660,7 +660,7 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		retryMock := retrytest.NewRetry(t)
 
 		// Create service with empty networks map
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			networks: map[string]Blockchain{},
 			retry:    retryMock,
 		}
@@ -722,7 +722,7 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		retryMock := retrytest.NewRetry(t)
 
 		// Create service with specific networks but not the one we'll test
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			networks: map[string]Blockchain{
 				"ethereum": NewBlockchainMock(t),
 				"bitcoin":  NewBlockchainMock(t),
@@ -790,7 +790,7 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		blockchainMock := NewBlockchainMock(t)
 
 		// Create service
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			networks: map[string]Blockchain{
 				"ethereum": blockchainMock,
 			},
@@ -856,7 +856,7 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		retryMock := retrytest.NewRetry(t)
 
 		// Create service
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			networks: map[string]Blockchain{
 				"ethereum": NewBlockchainMock(t),
 			},
@@ -914,7 +914,7 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		blockchainMock := NewBlockchainMock(t)
 
 		// Create service
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			networks: map[string]Blockchain{
 				"ethereum": blockchainMock,
 			},
@@ -1006,7 +1006,7 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		retryMock := retrytest.NewRetry(t)
 
 		// Create service
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			networks: map[string]Blockchain{},
 			retry:    retryMock,
 		}
@@ -1052,7 +1052,7 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		retryMock := retrytest.NewRetry(t)
 
 		// Create service
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			networks: map[string]Blockchain{},
 			retry:    retryMock,
 		}
@@ -1121,7 +1121,7 @@ func TestService_startRetryFailedBlockFetches(t *testing.T) {
 		blockchainMock := NewBlockchainMock(t)
 
 		// Create service
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			networks: map[string]Blockchain{
 				"ethereum": blockchainMock,
 			},
@@ -1185,7 +1185,7 @@ func TestService_startRetryFailedBlockFetches(t *testing.T) {
 		retryMock := retrytest.NewRetry(t)
 
 		// Create service
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			networks: map[string]Blockchain{},
 			retry:    retryMock,
 		}
@@ -1216,7 +1216,7 @@ func TestService_startRetryFailedBlockFetches(t *testing.T) {
 		retryMock := retrytest.NewRetry(t)
 
 		// Create service
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			networks: map[string]Blockchain{},
 			retry:    retryMock,
 		}
@@ -1264,7 +1264,7 @@ func TestService_startRetryFailedBlockFetches(t *testing.T) {
 func TestService_dispatchSubscriptionEvents(t *testing.T) {
 	t.Run("successful block events", func(t *testing.T) {
 		// Create service (no mocks needed for this function)
-		svc := &service{}
+		svc := &service[ObservedBlock]{}
 
 		// Create channels
 		eventsCh := make(chan BlockchainEvent, 2)
@@ -1344,7 +1344,7 @@ func TestService_dispatchSubscriptionEvents(t *testing.T) {
 
 	t.Run("error events", func(t *testing.T) {
 		// Create service
-		svc := &service{}
+		svc := &service[ObservedBlock]{}
 
 		// Create channels
 		eventsCh := make(chan BlockchainEvent, 2)
@@ -1412,7 +1412,7 @@ func TestService_dispatchSubscriptionEvents(t *testing.T) {
 
 	t.Run("mixed success and error events", func(t *testing.T) {
 		// Create service
-		svc := &service{}
+		svc := &service[ObservedBlock]{}
 
 		// Create channels
 		eventsCh := make(chan BlockchainEvent, 3)
@@ -1492,7 +1492,7 @@ func TestService_dispatchSubscriptionEvents(t *testing.T) {
 
 	t.Run("context canceled while processing", func(t *testing.T) {
 		// Create service
-		svc := &service{}
+		svc := &service[ObservedBlock]{}
 
 		// Create channels
 		eventsCh := make(chan BlockchainEvent, 2)
@@ -1541,7 +1541,7 @@ func TestService_dispatchSubscriptionEvents(t *testing.T) {
 
 	t.Run("empty events channel", func(t *testing.T) {
 		// Create service
-		svc := &service{}
+		svc := &service[ObservedBlock]{}
 
 		// Create channels
 		eventsCh := make(chan BlockchainEvent)
@@ -1581,7 +1581,7 @@ func TestService_dispatchSubscriptionEvents(t *testing.T) {
 
 	t.Run("different network names", func(t *testing.T) {
 		// Create service
-		svc := &service{}
+		svc := &service[ObservedBlock]{}
 
 		// Create channels
 		eventsCh := make(chan BlockchainEvent, 2)
@@ -1642,7 +1642,7 @@ func TestService_dispatchSubscriptionEvents(t *testing.T) {
 
 	t.Run("returns when chflow.Send to errorsCh fails", func(t *testing.T) {
 		// Create service
-		svc := &service{}
+		svc := &service[ObservedBlock]{}
 
 		// Create channels
 		eventsCh := make(chan BlockchainEvent, 1)
@@ -1697,7 +1697,7 @@ func TestService_launchAllNetworkSubscriptions(t *testing.T) {
 		blockchainMock := NewBlockchainMock(t)
 
 		// Create service
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			networks: map[string]Blockchain{
 				"ethereum": blockchainMock,
 			},
@@ -1735,7 +1735,7 @@ func TestService_launchAllNetworkSubscriptions(t *testing.T) {
 		blockchainMock := NewBlockchainMock(t)
 
 		// Create service
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			networks: map[string]Blockchain{
 				"ethereum": blockchainMock,
 			},
@@ -1774,7 +1774,7 @@ func TestService_launchAllNetworkSubscriptions(t *testing.T) {
 		bitcoinMock := NewBlockchainMock(t)
 
 		// Create service with multiple networks
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			networks: map[string]Blockchain{
 				"ethereum": ethereumMock,
 				"bitcoin":  bitcoinMock,
@@ -1820,7 +1820,7 @@ func TestService_launchAllNetworkSubscriptions(t *testing.T) {
 		blockchainMock := NewBlockchainMock(t)
 
 		// Create service
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			networks: map[string]Blockchain{
 				"ethereum": blockchainMock,
 			},
@@ -1852,7 +1852,7 @@ func TestService_launchAllNetworkSubscriptions(t *testing.T) {
 		blockchainMock := NewBlockchainMock(t)
 
 		// Create service
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			networks: map[string]Blockchain{
 				"ethereum": blockchainMock,
 			},
@@ -1887,7 +1887,7 @@ func TestService_launchAllNetworkSubscriptions(t *testing.T) {
 		checkpointMock := NewCheckpointStorageMock(t)
 
 		// Create service with no networks
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			networks:          map[string]Blockchain{},
 			checkpointStorage: checkpointMock,
 		}
@@ -1911,7 +1911,7 @@ func TestService_launchAllNetworkSubscriptions(t *testing.T) {
 		blockchainMock := NewBlockchainMock(t)
 
 		// Create service
-		svc := &service{
+		svc := &service[ObservedBlock]{
 			networks: map[string]Blockchain{
 				"ethereum": blockchainMock,
 			},
