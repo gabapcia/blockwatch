@@ -90,6 +90,7 @@ func (s *service) Close() {
 		s.closeFunc()
 	}
 	s.isStarted = false
+	s.closeFunc = nil
 }
 
 type config struct {

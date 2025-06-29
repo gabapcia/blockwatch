@@ -717,6 +717,73 @@ func TestService_retryFailedBlockFetches(t *testing.T) {
 		}
 	})
 
+	t.Run("returns ErrNetworkNotRegistered when network not found", func(t *testing.T) {
+		// Setup mocks
+		retryMock := retrytest.NewRetry(t)
+
+		// Create service with specific networks but not the one we'll test
+		svc := &service{
+			networks: map[string]Blockchain{
+				"ethereum": NewBlockchainMock(t),
+				"bitcoin":  NewBlockchainMock(t),
+			},
+			retry: retryMock,
+		}
+
+		// Mock retry that executes the operation and captures the returned error
+		var capturedError error
+		retryMock.EXPECT().Execute(mock.Anything, mock.AnythingOfType("func() error")).
+			RunAndReturn(func(ctx context.Context, operation func() error) []error {
+				capturedError = operation()
+				if capturedError != nil {
+					return []error{capturedError}
+				}
+				return nil
+			})
+
+		// Create channels
+		retryCh := make(chan BlockDispatchFailure, 1)
+		recoveredCh := make(chan ObservedBlock, 1)
+		finalErrorCh := make(chan BlockDispatchFailure, 1)
+
+		ctx := t.Context()
+
+		// Start the retry function
+		go svc.retryFailedBlockFetches(ctx, retryCh, recoveredCh, finalErrorCh)
+
+		// Send network error for unregistered network
+		inputError := BlockDispatchFailure{
+			Network: "polygon", // Not in the networks map
+			Height:  types.Hex("0x789"),
+			Errors:  []error{errors.New("original network error")},
+		}
+		retryCh <- inputError
+		close(retryCh)
+
+		// Wait for final error
+		select {
+		case finalErr := <-finalErrorCh:
+			assert.Equal(t, "polygon", finalErr.Network)
+			assert.Equal(t, types.Hex("0x789"), finalErr.Height)
+			assert.Len(t, finalErr.Errors, 2, "Expected original error plus ErrNetworkNotRegistered")
+			assert.Contains(t, finalErr.Errors[0].Error(), "original network error")
+			assert.Equal(t, ErrNetworkNotRegistered, finalErr.Errors[1])
+		case <-time.After(2 * time.Second):
+			t.Fatal("Expected final error to be sent")
+		}
+
+		// Verify the captured error is ErrNetworkNotRegistered
+		assert.Equal(t, ErrNetworkNotRegistered, capturedError, "Expected ErrNetworkNotRegistered to be returned from operation")
+
+		// Verify no recovery was sent
+		select {
+		case <-recoveredCh:
+			t.Fatal("Expected no recovered block to be sent")
+		case <-time.After(100 * time.Millisecond):
+			// Expected - no recovery should be sent
+		}
+	})
+
 	t.Run("retry fails - persistent blockchain error", func(t *testing.T) {
 		// Setup mocks
 		retryMock := retrytest.NewRetry(t)
@@ -1571,6 +1638,55 @@ func TestService_dispatchSubscriptionEvents(t *testing.T) {
 
 		assert.Equal(t, networkName, receivedBlocks[0].Network)
 		assert.Equal(t, networkName, receivedErrors[0].Network)
+	})
+
+	t.Run("returns when chflow.Send to errorsCh fails", func(t *testing.T) {
+		// Create service
+		svc := &service{}
+
+		// Create channels
+		eventsCh := make(chan BlockchainEvent, 1)
+		blocksCh := make(chan ObservedBlock, 1)
+		errorsCh := make(chan BlockDispatchFailure) // No buffer to simulate blocking
+
+		// Create context that will be canceled
+		ctx, cancel := context.WithCancel(t.Context())
+
+		// Start consuming subscription
+		done := make(chan struct{})
+		go func() {
+			svc.dispatchSubscriptionEvents(ctx, "ethereum", eventsCh, blocksCh, errorsCh)
+			close(done)
+		}()
+
+		// Send an error event that will trigger the chflow.Send to errorsCh
+		eventsCh <- BlockchainEvent{
+			Height: types.Hex("0x600"),
+			Block:  Block{},
+			Err:    errors.New("blockchain error"),
+		}
+
+		// Give a small delay to ensure the error event is processed and chflow.Send is attempted
+		time.Sleep(10 * time.Millisecond)
+
+		// Cancel context to make chflow.Send return false
+		cancel()
+
+		// Function should return due to chflow.Send returning false
+		select {
+		case <-done:
+			// Expected - function should return when chflow.Send returns false
+		case <-time.After(1 * time.Second):
+			t.Fatal("Function should return when chflow.Send to errorsCh returns false")
+		}
+
+		// Verify no error was sent to errorsCh (because chflow.Send returned false)
+		select {
+		case <-errorsCh:
+			t.Fatal("Expected no error to be sent when chflow.Send returns false")
+		default:
+			// Expected - no error should be sent
+		}
 	})
 }
 
