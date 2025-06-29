@@ -67,17 +67,17 @@ type service[T any] struct {
 // Compile-time check to ensure *service implements the Service interface.
 var _ Service[ObservedBlock] = (*service[ObservedBlock])(nil)
 
-// processObservedBlocksWithCheckpoints reads ObservedBlock values from inputCh,
-// saves a checkpoint for each block, applies transformation, and forwards them to outputCh.
+// checkpointAndForward reads ObservedBlock values from blockIn,
+// saves a checkpoint for each block, applies transformation, and forwards them to transformedOut.
 //
 // This function ensures that every successfully observed block has its height
 // saved as a checkpoint before being transformed and sent to downstream consumers.
 //
-// inputCh and outputCh are managed by the caller and must be closed appropriately.
+// blockIn and transformedOut are managed by the caller and must be closed appropriately.
 // Panics if transformFunc is nil (indicates an internal package bug).
-func (s *service[T]) processObservedBlocksWithCheckpoints(ctx context.Context, inputCh <-chan ObservedBlock, outputCh chan<- T) {
+func (s *service[T]) checkpointAndForward(ctx context.Context, blockIn <-chan ObservedBlock, transformedOut chan<- T) {
 	for {
-		observedBlock, ok := chflow.Receive(ctx, inputCh)
+		observedBlock, ok := chflow.Receive(ctx, blockIn)
 		if !ok {
 			return
 		}
@@ -97,17 +97,17 @@ func (s *service[T]) processObservedBlocksWithCheckpoints(ctx context.Context, i
 		output := s.transformFunc(observedBlock)
 
 		// Forward the transformed output to the final output channel
-		if ok := chflow.Send(ctx, outputCh, output); !ok {
+		if ok := chflow.Send(ctx, transformedOut, output); !ok {
 			return
 		}
 	}
 }
 
-// startProcessObservedBlocksWithCheckpoints launches processObservedBlocksWithCheckpoints
+// startCheckpointAndForward launches checkpointAndForward
 // in a background goroutine. It returns immediately, leaving the processor running
-// until inputCh is closed or ctx is canceled.
-func (s *service[T]) startProcessObservedBlocksWithCheckpoints(ctx context.Context, inputCh <-chan ObservedBlock, outputCh chan<- T) {
-	go s.processObservedBlocksWithCheckpoints(ctx, inputCh, outputCh)
+// until blockIn is closed or ctx is canceled.
+func (s *service[T]) startCheckpointAndForward(ctx context.Context, blockIn <-chan ObservedBlock, transformedOut chan<- T) {
+	go s.checkpointAndForward(ctx, blockIn, transformedOut)
 }
 
 // Start initializes all subscriptions for registered networks,
@@ -128,16 +128,16 @@ func (s *service[T]) Start(ctx context.Context) (<-chan T, error) {
 	ctx, cancel := context.WithCancel(ctx)
 
 	var (
-		retryFailureCh          chan BlockDispatchFailure
-		dispatchFailureCh       = make(chan BlockDispatchFailure, dispatchFailureChannelBufferSize)
-		internalObservedBlockCh = make(chan ObservedBlock, observedBlockChannelBufferSize)
-		outputCh                = make(chan T, observedBlockChannelBufferSize)
+		retryFailureCh    chan BlockDispatchFailure
+		dispatchFailureCh = make(chan BlockDispatchFailure, dispatchFailureChannelBufferSize)
+		preCheckpointCh   = make(chan ObservedBlock, observedBlockChannelBufferSize)
+		finalOut          = make(chan T, observedBlockChannelBufferSize)
 	)
 
 	s.closeFunc = func() {
 		cancel()
-		close(internalObservedBlockCh)
-		close(outputCh)
+		close(preCheckpointCh)
+		close(finalOut)
 		if retryFailureCh != nil {
 			close(retryFailureCh)
 		}
@@ -148,20 +148,20 @@ func (s *service[T]) Start(ctx context.Context) (<-chan T, error) {
 
 	if s.retry != nil {
 		retryFailureCh = make(chan BlockDispatchFailure, retryFailureChannelBufferSize)
-		s.startRetryFailedBlockFetches(ctx, retryFailureCh, internalObservedBlockCh, dispatchFailureCh)
+		s.startRetryFailedBlockFetches(ctx, retryFailureCh, preCheckpointCh, dispatchFailureCh)
 	}
 
 	// Start the checkpoint processor that sits between internal processing and final output
-	s.startProcessObservedBlocksWithCheckpoints(ctx, internalObservedBlockCh, outputCh)
+	s.startCheckpointAndForward(ctx, preCheckpointCh, finalOut)
 
 	errorSubmissionCh := chflow.FirstNonNil(retryFailureCh, dispatchFailureCh)
-	if err := s.launchAllNetworkSubscriptions(ctx, internalObservedBlockCh, errorSubmissionCh); err != nil {
+	if err := s.launchAllNetworkSubscriptions(ctx, preCheckpointCh, errorSubmissionCh); err != nil {
 		s.closeFunc()
 		return nil, err
 	}
 
 	s.isStarted = true
-	return outputCh, nil
+	return finalOut, nil
 }
 
 // Close shuts down the service, cancels all active routines, and closes internal channels.
