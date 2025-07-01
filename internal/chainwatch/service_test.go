@@ -3,6 +3,7 @@ package chainwatch
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -313,6 +314,10 @@ func TestService_Start(t *testing.T) {
 		blockchainMock.EXPECT().Subscribe(mock.Anything, types.Hex("")).
 			Return((<-chan BlockchainEvent)(eventsCh), nil)
 
+		// Mock successful checkpoint save for the integration test
+		checkpointMock.EXPECT().SaveCheckpoint(mock.Anything, "ethereum", types.Hex("0x123")).
+			Return(nil)
+
 		ctx := t.Context()
 
 		// Start service
@@ -488,6 +493,54 @@ func TestService_Close(t *testing.T) {
 		// Clean up
 		close(eventsCh)
 	})
+
+	t.Run("context cancellation stops dispatch", func(t *testing.T) {
+		// Setup mocks
+		checkpointMock := NewCheckpointStorageMock(t)
+		blockchainMock := NewBlockchainMock(t)
+
+		// Create service
+		svc := New(map[string]Blockchain{
+			"ethereum": blockchainMock,
+		}, WithCheckpointStorage(checkpointMock))
+
+		// Mock checkpoint load
+		checkpointMock.EXPECT().LoadLatestCheckpoint(mock.Anything, "ethereum").
+			Return(types.Hex(""), ErrNoCheckpointFound)
+
+		// Mock successful subscription
+		eventsCh := make(chan BlockchainEvent)
+		blockchainMock.EXPECT().Subscribe(mock.Anything, types.Hex("")).
+			Return((<-chan BlockchainEvent)(eventsCh), nil)
+
+		ctx, cancel := context.WithCancel(t.Context())
+
+		// Start service
+		observedBlockCh, err := svc.Start(ctx)
+		assert.NoError(t, err)
+		assert.NotNil(t, observedBlockCh)
+
+		// Cancel the context
+		cancel()
+
+		// Send an event - it should not be processed
+		eventsCh <- BlockchainEvent{
+			Height: types.Hex("0x123"),
+			Block:  Block{Height: types.Hex("0x123")},
+		}
+
+		// Verify no block is received
+		select {
+		case <-observedBlockCh:
+			t.Fatal("Received unexpected block after context cancellation")
+		case <-time.After(100 * time.Millisecond):
+			// Expected behavior
+		}
+
+		// Clean up
+		svc.Close()
+		close(eventsCh)
+	})
 }
 
 func TestNew(t *testing.T) {
@@ -570,6 +623,63 @@ func TestNew(t *testing.T) {
 		assert.NotNil(t, svc.checkpointStorage)
 		assert.Nil(t, svc.retry)
 		assert.NotNil(t, svc.dispatchFailureHandler)
+	})
+}
+
+func TestNewWithTransform(t *testing.T) {
+	t.Run("create service with transform function", func(t *testing.T) {
+		// Create networks map
+		networks := map[string]Blockchain{
+			"ethereum": NewBlockchainMock(t),
+		}
+
+		// Define a transform function
+		transformFunc := func(ob ObservedBlock) string {
+			return fmt.Sprintf("transformed-%s", ob.Height)
+		}
+
+		// Create service with transform function
+		svc := NewWithTransform(networks, transformFunc)
+
+		// Verify service configuration
+		assert.NotNil(t, svc)
+		assert.Equal(t, networks, svc.networks)
+		assert.NotNil(t, svc.checkpointStorage)
+		assert.Nil(t, svc.retry)
+		assert.NotNil(t, svc.dispatchFailureHandler)
+		assert.NotNil(t, svc.transformFunc)
+
+		// Test the transform function
+		testBlock := ObservedBlock{Block: Block{Height: types.Hex("0x123")}}
+		transformed := svc.transformFunc(testBlock)
+		assert.Equal(t, "transformed-0x123", transformed)
+	})
+
+	t.Run("create service with all options and transform", func(t *testing.T) {
+		// Setup dependencies
+		networks := map[string]Blockchain{
+			"ethereum": NewBlockchainMock(t),
+		}
+		checkpointMock := NewCheckpointStorageMock(t)
+		retryMock := retrytest.NewRetry(t)
+		customHandler := func(ctx context.Context, failure BlockDispatchFailure) {}
+		transformFunc := func(ob ObservedBlock) int {
+			return 123
+		}
+
+		// Create service with all options
+		svc := NewWithTransform(networks, transformFunc,
+			WithCheckpointStorage(checkpointMock),
+			WithRetry(retryMock),
+			WithDispatchFailureHandler(customHandler))
+
+		// Verify service configuration
+		assert.NotNil(t, svc)
+		assert.Equal(t, networks, svc.networks)
+		assert.Equal(t, checkpointMock, svc.checkpointStorage)
+		assert.Equal(t, retryMock, svc.retry)
+		assert.NotNil(t, svc.dispatchFailureHandler)
+		assert.NotNil(t, svc.transformFunc)
 	})
 }
 
@@ -723,6 +833,197 @@ func TestWithCheckpointStorage(t *testing.T) {
 
 		// Verify checkpoint storage is nil
 		assert.Nil(t, svc.checkpointStorage)
+	})
+}
+
+func TestCheckpointAndForward(t *testing.T) {
+	t.Run("successful block processing with checkpoint save", func(t *testing.T) {
+		checkpointMock := NewCheckpointStorageMock(t)
+		transformFunc := func(ob ObservedBlock) string {
+			return fmt.Sprintf("transformed-%s-%s", ob.Network, ob.Height)
+		}
+		svc := &service[string]{
+			checkpointStorage: checkpointMock,
+			transformFunc:     transformFunc,
+		}
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		blockIn := make(chan ObservedBlock, 1)
+		transformedOut := make(chan string, 1)
+
+		checkpointMock.EXPECT().SaveCheckpoint(mock.Anything, "ethereum", types.Hex("0x123")).Return(nil)
+
+		go svc.checkpointAndForward(ctx, blockIn, transformedOut)
+
+		blockIn <- ObservedBlock{Network: "ethereum", Block: Block{Height: types.Hex("0x123"), Hash: "test-hash"}}
+		close(blockIn)
+
+		select {
+		case result := <-transformedOut:
+			assert.Equal(t, "transformed-ethereum-0x123", result)
+		case <-time.After(1 * time.Second):
+			t.Fatal("Expected transformed output, but none received")
+		}
+	})
+
+	t.Run("checkpoint save failure does not stop processing", func(t *testing.T) {
+		checkpointMock := NewCheckpointStorageMock(t)
+		transformFunc := func(ob ObservedBlock) string {
+			return fmt.Sprintf("transformed-%s-%s", ob.Network, ob.Height)
+		}
+		svc := &service[string]{
+			checkpointStorage: checkpointMock,
+			transformFunc:     transformFunc,
+		}
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		blockIn := make(chan ObservedBlock, 1)
+		transformedOut := make(chan string, 1)
+
+		checkpointMock.EXPECT().SaveCheckpoint(mock.Anything, "ethereum", types.Hex("0x123")).Return(errors.New("save failed"))
+
+		go svc.checkpointAndForward(ctx, blockIn, transformedOut)
+
+		blockIn <- ObservedBlock{Network: "ethereum", Block: Block{Height: types.Hex("0x123"), Hash: "test-hash"}}
+		close(blockIn)
+
+		select {
+		case result := <-transformedOut:
+			assert.Equal(t, "transformed-ethereum-0x123", result)
+		case <-time.After(1 * time.Second):
+			t.Fatal("Expected transformed output, but none received")
+		}
+	})
+
+	t.Run("context cancellation stops processing", func(t *testing.T) {
+		checkpointMock := NewCheckpointStorageMock(t)
+		transformFunc := func(ob ObservedBlock) string {
+			return fmt.Sprintf("transformed-%s-%s", ob.Network, ob.Height)
+		}
+		svc := &service[string]{
+			checkpointStorage: checkpointMock,
+			transformFunc:     transformFunc,
+		}
+		ctx, cancel := context.WithCancel(t.Context())
+		blockIn := make(chan ObservedBlock, 1)
+		transformedOut := make(chan string, 1)
+
+		checkpointMock.EXPECT().SaveCheckpoint(mock.Anything, "ethereum", types.Hex("0x123")).Return(nil).Maybe()
+
+		go svc.checkpointAndForward(ctx, blockIn, transformedOut)
+
+		cancel()                          // Cancel the context immediately
+		time.Sleep(50 * time.Millisecond) // Allow time for cancellation to propagate
+
+		blockIn <- ObservedBlock{Network: "ethereum", Block: Block{Height: types.Hex("0x123"), Hash: "test-hash"}}
+		close(blockIn)
+
+		select {
+		case <-transformedOut:
+			t.Fatal("Received unexpected output after context cancellation")
+		case <-time.After(100 * time.Millisecond):
+			// Expected behavior: no output
+		}
+	})
+
+	t.Run("input channel close stops processing", func(t *testing.T) {
+		checkpointMock := NewCheckpointStorageMock(t)
+		transformFunc := func(ob ObservedBlock) string {
+			return fmt.Sprintf("transformed-%s-%s", ob.Network, ob.Height)
+		}
+		svc := &service[string]{
+			checkpointStorage: checkpointMock,
+			transformFunc:     transformFunc,
+		}
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		blockIn := make(chan ObservedBlock, 1)
+		transformedOut := make(chan string, 1)
+
+		go svc.checkpointAndForward(ctx, blockIn, transformedOut)
+
+		close(blockIn) // Close the input channel
+
+		select {
+		case <-transformedOut:
+			t.Fatal("Received unexpected output from empty input channel")
+		case <-time.After(100 * time.Millisecond):
+			// Expected behavior: no output
+		}
+	})
+
+	t.Run("output channel send failure stops processing", func(t *testing.T) {
+		checkpointMock := NewCheckpointStorageMock(t)
+		transformFunc := func(ob ObservedBlock) string {
+			return fmt.Sprintf("transformed-%s-%s", ob.Network, ob.Height)
+		}
+		svc := &service[string]{
+			checkpointStorage: checkpointMock,
+			transformFunc:     transformFunc,
+		}
+		ctx, cancel := context.WithCancel(t.Context())
+		blockIn := make(chan ObservedBlock, 1)
+		transformedOut := make(chan string) // Unbuffered channel
+
+		checkpointMock.EXPECT().SaveCheckpoint(mock.Anything, "ethereum", types.Hex("0x123")).Return(nil)
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			svc.checkpointAndForward(ctx, blockIn, transformedOut)
+		}()
+
+		blockIn <- ObservedBlock{Network: "ethereum", Block: Block{Height: types.Hex("0x123"), Hash: "test-hash"}}
+
+		// Wait for the checkpoint to be saved, then cancel
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+
+		wg.Wait() // Ensure the goroutine has exited
+
+		select {
+		case <-transformedOut:
+			t.Fatal("Received unexpected output after send failure")
+		default:
+			// Expected behavior: no output
+		}
+	})
+}
+
+func TestStartCheckpointAndForward(t *testing.T) {
+	t.Run("starts checkpointAndForward in a goroutine", func(t *testing.T) {
+		startedCh := make(chan struct{})
+		transformFunc := func(ob ObservedBlock) string {
+			close(startedCh)
+			return ""
+		}
+
+		svc := &service[string]{
+			checkpointStorage: NewCheckpointStorageMock(t),
+			transformFunc:     transformFunc,
+		}
+
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+
+		blockIn := make(chan ObservedBlock, 1)
+		transformedOut := make(chan string, 1)
+
+		// Mock the checkpoint save to prevent unexpected calls
+		svc.checkpointStorage.(*CheckpointStorageMock).EXPECT().SaveCheckpoint(mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+
+		svc.startCheckpointAndForward(ctx, blockIn, transformedOut)
+
+		// Send a block to trigger the transform function
+		blockIn <- ObservedBlock{}
+
+		select {
+		case <-startedCh:
+			// Test passed, the goroutine was started
+		case <-time.After(1 * time.Second):
+			t.Fatal("checkpointAndForward was not started in a goroutine")
+		}
 	})
 }
 
