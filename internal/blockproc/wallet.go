@@ -1,4 +1,4 @@
-package watcher
+package blockproc
 
 import "context"
 
