@@ -1,9 +1,10 @@
 package blockproc
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // blockProcessingState encapsulates the lifecycle and metadata for processing
@@ -14,7 +15,7 @@ import (
 // visibility into processing behavior (including timing and failure reasons).
 type blockProcessingState struct {
 	receivedAt       time.Time       // When the block was initially received for processing
-	processingID     string          // Unique identifier for this processing attempt (UUIDv7)
+	processingID     string          // Unique identifier for this processing attempt (SHA-256)
 	network          string          // Blockchain network name (e.g., "ethereum", "polygon")
 	block            Block           // The blockchain block associated with this processing state
 	lastAttemptAt    *time.Time      // When the last processing attempt occurred (nil if never attempted)
@@ -26,16 +27,25 @@ type blockProcessingState struct {
 }
 
 // newBlockProcessingState creates a new blockProcessingState for the given
-// block and network, initializing timestamps, counters, and generating a
-// unique processing ID.
+// block and network. It initializes timestamps, counters, and generates a
+// deterministic processing ID for idempotency.
+//
+// The processing ID is derived by hashing the string "<network>:<blockHash>"
+// using SHA-256. This ensures that the same block always results in the same
+// ID, allowing the system to detect and prevent duplicate processing attempts.
 func newBlockProcessingState(network string, block Block) blockProcessingState {
+	var (
+		key          = fmt.Sprintf("%s:%s", network, block.Hash)
+		sum          = sha256.Sum256([]byte(key))
+		processingID = hex.EncodeToString(sum[:])
+	)
+
 	return blockProcessingState{
-		processingID:    uuid.Must(uuid.NewV7()).String(),
 		receivedAt:      time.Now().UTC(),
-		attempts:        0,
-		attemptErrorLog: make(map[int64]error),
+		processingID:    processingID,
 		network:         network,
 		block:           block,
+		attemptErrorLog: make(map[int64]error),
 	}
 }
 
