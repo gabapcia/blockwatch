@@ -3,7 +3,8 @@
 // options for customizing retry behavior.
 //
 // The package implements an exponential backoff strategy by default, which is suitable for
-// most retry scenarios. It allows customization of retry attempts, delays, and callbacks.
+// most retry scenarios. It allows customization of retry attempts, delays, and callbacks,
+// and internally uses the `retry.Do` function to perform the retries.
 //
 // Basic usage:
 //
@@ -23,13 +24,11 @@
 //	    retry.WithAttempts(5),
 //	    retry.WithDelay(2*time.Second),
 //	    retry.WithMaxDelay(10*time.Second),
-//	    retry.WithLastErrorOnly(false), // Get all errors, not just the last one
 //	)
 package retry
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	retry "github.com/avast/retry-go/v4"
@@ -51,19 +50,16 @@ type Retry interface {
 	// and should return nil on success or an error on failure.
 	//
 	// Execute returns an empty slice if the operation succeeds within the configured
-	// number of attempts, or a slice of errors if all attempts fail or the context is done.
-	// The number of errors returned depends on the WithLastErrorOnly configuration:
-	// - When true (default): returns only the last error
-	// - When false: returns all errors from all failed attempts
+	// number of attempts. If all attempts fail, or the context is done, it returns a
+	// slice containing the errors from all failed attempts.
 	Execute(ctx context.Context, operation func() error) []error
 }
 
 // config holds internal settings for the retry mechanism.
 type config struct {
-	attempts    uint          // maximum number of retry attempts
-	delay       time.Duration // base delay between retry attempts
-	maxDelay    time.Duration // maximum delay between retry attempts
-	lastErrOnly bool          // whether to return only the last error
+	attempts uint          // maximum number of retry attempts
+	delay    time.Duration // base delay between retry attempts
+	maxDelay time.Duration // maximum delay between retry attempts
 }
 
 // Option defines a functional option for configuring the retry mechanism.
@@ -100,10 +96,9 @@ var _ Retry = (*retrier)(nil)
 //	)
 func New(opts ...Option) Retry {
 	cfg := config{
-		attempts:    3,
-		delay:       1 * time.Second,
-		maxDelay:    5 * time.Second,
-		lastErrOnly: true,
+		attempts: 3,
+		delay:    1 * time.Second,
+		maxDelay: 5 * time.Second,
 	}
 	for _, opt := range opts {
 		opt(&cfg)
@@ -140,12 +135,12 @@ func New(opts ...Option) Retry {
 //	}
 func (r *retrier) Execute(ctx context.Context, operation func() error) []error {
 	options := []retry.Option{
+		retry.LastErrorOnly(false),
 		retry.Attempts(r.cfg.attempts),
 		retry.Delay(r.cfg.delay),
 		retry.MaxDelay(r.cfg.maxDelay),
 		retry.DelayType(retry.BackOffDelay), // Use exponential backoff
-		retry.LastErrorOnly(r.cfg.lastErrOnly),
-		retry.Context(ctx), // Use the provided context for cancellation
+		retry.Context(ctx),                  // Use the provided context for cancellation
 	}
 
 	err := retry.Do(operation, options...)
@@ -153,12 +148,7 @@ func (r *retrier) Execute(ctx context.Context, operation func() error) []error {
 		return []error{}
 	}
 
-	var retryErr retry.Error
-	if errors.As(err, &retryErr) {
-		return retryErr.WrappedErrors()
-	}
-
-	return []error{err}
+	return err.(retry.Error).WrappedErrors()
 }
 
 // WithAttempts sets the maximum number of attempts (including the initial attempt).
@@ -201,20 +191,5 @@ func WithDelay(d time.Duration) Option {
 func WithMaxDelay(d time.Duration) Option {
 	return func(c *config) {
 		c.maxDelay = d
-	}
-}
-
-// WithLastErrorOnly sets whether to return only the last error.
-// When true, only the error from the final attempt is returned.
-// When false, all errors from all attempts are combined.
-// Default: true.
-//
-// Example:
-//
-//	// Return all errors, not just the last one
-//	retry.New(retry.WithLastErrorOnly(false))
-func WithLastErrorOnly(b bool) Option {
-	return func(c *config) {
-		c.lastErrOnly = b
 	}
 }

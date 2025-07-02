@@ -29,3 +29,9 @@ mocks:
 unit-tests:
 	@go clean -testcache
 	@go test ./...
+
+.PHONY: coverage
+coverage:
+	@go test -coverprofile=coverage.out ./...
+	@go tool cover -html=coverage.out -o coverage.html
+	@open coverage.html
