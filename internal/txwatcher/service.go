@@ -8,13 +8,17 @@ import (
 	"github.com/gabapcia/blockwatch/internal/pkg/logger"
 )
 
+const defaultMaxProcessingTime = 5 * time.Minute
+
 var ErrServiceAlreadyStarted = errors.New("service already started")
 
 type Service interface {
 }
 
 type service struct {
-	idempotencyGuard    IdempotencyGuard
+	maxProcessingTime time.Duration
+	idempotencyGuard  IdempotencyGuard
+
 	walletStorage       WalletStorage
 	transactionNotifier TransactionNotifier
 }
@@ -22,7 +26,7 @@ type service struct {
 var _ Service = (*service)(nil)
 
 func (s *service) NotifyWatchedTransactions(ctx context.Context, block Block) error {
-	ok, err := s.idempotencyGuard.ClaimBlockForTxWatch(ctx, block.Network, block.Hash, 5*time.Minute)
+	ok, err := s.idempotencyGuard.ClaimBlockForTxWatch(ctx, block.Network, block.Hash, s.maxProcessingTime)
 	if err != nil {
 		return err
 	}
@@ -47,23 +51,32 @@ func (s *service) NotifyWatchedTransactions(ctx context.Context, block Block) er
 }
 
 type config struct {
-	idempotencyGuard IdempotencyGuard
+	maxProcessingTime time.Duration
+	idempotencyGuard  IdempotencyGuard
 }
 
 type Option func(*config)
 
 func New(ws WalletStorage, tn TransactionNotifier, opts ...Option) *service {
 	cfg := config{
-		idempotencyGuard: nopIdempotencyGuard{},
+		maxProcessingTime: defaultMaxProcessingTime,
+		idempotencyGuard:  nopIdempotencyGuard{},
 	}
 	for _, opt := range opts {
 		opt(&cfg)
 	}
 
 	return &service{
+		maxProcessingTime:   cfg.maxProcessingTime,
 		idempotencyGuard:    cfg.idempotencyGuard,
 		walletStorage:       ws,
 		transactionNotifier: tn,
+	}
+}
+
+func WithMaxProcessingTime(d time.Duration) Option {
+	return func(c *config) {
+		c.maxProcessingTime = d
 	}
 }
 
