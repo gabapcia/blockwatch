@@ -32,17 +32,18 @@ type BlockProcessingFailureNotifier interface {
 }
 
 // TransactionNotifier defines a mechanism for notifying external components
-// when a relevant transaction has been observed for an opted-in wallet.
+// when relevant transactions have been observed involving opted-in wallets.
 //
-// This is useful for triggering business workflows, alerting users,
-// or broadcasting events based on wallet activity across networks.
+// This interface is useful for triggering downstream processing, alerting users,
+// or emitting events based on wallet activity detected across different blockchain networks.
 type TransactionNotifier interface {
-	// NotifyTransaction is called whenever a transaction involving a wallet
-	// that opted-in for monitoring is detected.
+	// NotifyTransactions is called whenever one or more transactions involving a
+	// wallet that has opted in for monitoring are detected.
 	//
 	// Parameters:
+	//   - ctx: context for cancellation and timeout control.
 	//   - network: the blockchain network name (e.g., "ethereum", "solana").
-	//   - wallet: the wallet address that matched the opt-in filter.
-	//   - tx: the transaction object that triggered the match.
-	NotifyTransaction(ctx context.Context, network, wallet string, tx Transaction) error
+	//   - wallet: the wallet address that matched the opt-in criteria.
+	//   - txs: a slice of transactions associated with the wallet.
+	NotifyTransactions(ctx context.Context, network, wallet string, txs []Transaction) error
 }

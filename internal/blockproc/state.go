@@ -16,7 +16,6 @@ import (
 type blockProcessingState struct {
 	receivedAt       time.Time       // When the block was initially received for processing
 	processingID     string          // Unique identifier for this processing attempt (SHA-256)
-	network          string          // Blockchain network name (e.g., "ethereum", "polygon")
 	block            Block           // The blockchain block associated with this processing state
 	lastAttemptAt    *time.Time      // When the last processing attempt occurred (nil if never attempted)
 	lastAttemptError error           // The most recent error encountered (if any)
@@ -33,9 +32,9 @@ type blockProcessingState struct {
 // The processing ID is derived by hashing the string "<network>:<blockHash>"
 // using SHA-256. This ensures that the same block always results in the same
 // ID, allowing the system to detect and prevent duplicate processing attempts.
-func newBlockProcessingState(network string, block Block) blockProcessingState {
+func newBlockProcessingState(block Block) blockProcessingState {
 	var (
-		key          = fmt.Sprintf("%s:%s", network, block.Hash)
+		key          = fmt.Sprintf("%s:%s", block.Network, block.Hash)
 		sum          = sha256.Sum256([]byte(key))
 		processingID = hex.EncodeToString(sum[:])
 	)
@@ -43,7 +42,6 @@ func newBlockProcessingState(network string, block Block) blockProcessingState {
 	return blockProcessingState{
 		receivedAt:      time.Now().UTC(),
 		processingID:    processingID,
-		network:         network,
 		block:           block,
 		attemptErrorLog: make(map[int64]error),
 	}
@@ -116,7 +114,6 @@ func (s blockProcessingState) asSuccessResult() BlockProcessingSuccess {
 
 	return BlockProcessingSuccess{
 		ProcessingID: s.processingID,
-		Network:      s.network,
 		Block:        s.block,
 		ProcessedAt:  *s.finalizedAt,
 	}
@@ -132,7 +129,6 @@ func (s blockProcessingState) asFailureResult() BlockProcessingFailure {
 
 	return BlockProcessingFailure{
 		ProcessingID:  s.processingID,
-		Network:       s.network,
 		Block:         s.block,
 		FailedAt:      *s.finalizedAt,
 		Attempts:      s.attempts,
