@@ -1,6 +1,10 @@
 package txwatcher
 
-import "context"
+import (
+	"context"
+
+	"github.com/gabapcia/blockwatch/internal/pkg/logger"
+)
 
 // TransactionNotifier defines a mechanism for notifying external components
 // when relevant transactions have been observed involving opted-in wallets.
@@ -69,6 +73,31 @@ func (s *service) notifyWatchedWalletTransactions(ctx context.Context, network s
 		if err := s.transactionNotifier.NotifyTransactions(ctx, network, wallet, txs); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+func (s *service) NotifyWatchedTransactions(ctx context.Context, block Block) error {
+	ok, err := s.idempotencyGuard.ClaimBlockForTxWatch(ctx, block.Network, block.Hash, s.maxProcessingTime)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+
+	if err := s.notifyWatchedWalletTransactions(ctx, block.Network, block.Transactions); err != nil {
+		return err
+	}
+
+	if err := s.idempotencyGuard.MarkBlockTxWatchComplete(ctx, block.Network, block.Hash); err != nil {
+		logger.Error(ctx, "error marking block tx watch as complete",
+			"block.network", block.Network,
+			"block.hash", block.Hash,
+			"block.height", block.Height,
+			"error", err,
+		)
 	}
 
 	return nil
