@@ -61,75 +61,6 @@ func TestNewResource(t *testing.T) {
 	})
 }
 
-func TestInitLoggerProvider(t *testing.T) {
-	// Reset global logger provider before test
-	originalLoggerProvider := loggerProvider
-	defer func() {
-		loggerProvider = originalLoggerProvider
-	}()
-
-	t.Run("valid context and resource", func(t *testing.T) {
-		ctx := context.Background()
-		res, err := newResource("test-service")
-		require.NoError(t, err)
-
-		lp, err := initLoggerProvider(ctx, res)
-		if err != nil {
-			// Expected to fail without OTLP endpoint configured
-			t.Logf("initLoggerProvider() failed as expected: %v", err)
-		} else {
-			// If it succeeds, verify the provider is valid
-			assert.NotNil(t, lp, "initLoggerProvider() returned nil provider")
-			// Clean up
-			_ = lp.Shutdown(context.Background())
-		}
-	})
-
-	t.Run("cancelled context", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		res, err := newResource("test-service")
-		require.NoError(t, err)
-
-		lp, err := initLoggerProvider(ctx, res)
-		if err != nil {
-			// Expected to fail with cancelled context
-			t.Logf("initLoggerProvider() failed with cancelled context as expected: %v", err)
-		} else {
-			// Clean up if it somehow succeeded
-			if lp != nil {
-				_ = lp.Shutdown(context.Background())
-			}
-		}
-	})
-}
-
-func TestLoggerProvider(t *testing.T) {
-	// Reset global logger provider before test
-	originalLoggerProvider := loggerProvider
-	defer func() {
-		loggerProvider = originalLoggerProvider
-	}()
-
-	t.Run("returns nil when not initialized", func(t *testing.T) {
-		loggerProvider = nil
-		lp := LoggerProvider()
-		assert.Nil(t, lp, "LoggerProvider() should return nil when not initialized")
-	})
-
-	t.Run("returns provider when initialized", func(t *testing.T) {
-		// Create a mock logger provider
-		mockProvider := sdklog.NewLoggerProvider()
-		loggerProvider = mockProvider
-
-		lp := LoggerProvider()
-		assert.Equal(t, mockProvider, lp, "LoggerProvider() should return the initialized provider")
-
-		// Clean up
-		_ = mockProvider.Shutdown(context.Background())
-	})
-}
-
 func TestInitMeterProvider(t *testing.T) {
 	// Store original meter provider to restore later
 	originalMeterProvider := otel.GetMeterProvider()
@@ -220,11 +151,9 @@ func TestInit(t *testing.T) {
 	// Store original providers to restore later
 	originalMeterProvider := otel.GetMeterProvider()
 	originalTracerProvider := otel.GetTracerProvider()
-	originalLoggerProvider := loggerProvider
 	defer func() {
 		otel.SetMeterProvider(originalMeterProvider)
 		otel.SetTracerProvider(originalTracerProvider)
-		loggerProvider = originalLoggerProvider
 	}()
 
 	t.Run("valid service name", func(t *testing.T) {

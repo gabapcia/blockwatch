@@ -19,7 +19,7 @@ import (
 
 func init() {
 	// Initialize logger for tests to prevent nil pointer dereference
-	_ = logger.Init(logger.WithLevel("error")) // Use error level to reduce test output
+	_ = logger.Init("error") // Use error level to reduce test output
 }
 
 func TestService_Start(t *testing.T) {

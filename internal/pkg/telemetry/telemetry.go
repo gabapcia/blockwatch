@@ -9,41 +9,13 @@ import (
 	"errors"
 
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdkresource "go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.34.0"
 )
-
-var loggerProvider *sdklog.LoggerProvider
-
-// initLoggerProvider sets up an OTLP gRPC LoggerProvider using a
-// batched processor and the given Resource. It stores the provider
-// globally and returns it for direct use or shutdown.
-func initLoggerProvider(ctx context.Context, res *sdkresource.Resource) (*sdklog.LoggerProvider, error) {
-	exporter, err := otlploggrpc.New(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	lp := sdklog.NewLoggerProvider(
-		sdklog.WithProcessor(sdklog.NewBatchProcessor(exporter)),
-		sdklog.WithResource(res),
-	)
-
-	loggerProvider = lp
-	return lp, nil
-}
-
-// LoggerProvider returns the globally configured LoggerProvider.
-// It will be non-nil after Init has been called successfully.
-func LoggerProvider() *sdklog.LoggerProvider {
-	return loggerProvider
-}
 
 // initMeterProvider sets up an OTLP gRPC MeterProvider using a
 // periodic reader and the given Resource. It also registers the
@@ -97,12 +69,23 @@ func newResource(serviceName string) (*sdkresource.Resource, error) {
 // Call this function at application shutdown to ensure all telemetry is sent.
 type ShutdownFunc func(ctx context.Context) error
 
-// Init configures OpenTelemetry for logs, metrics, and traces using OTLP gRPC.
-// It takes a context and the logical serviceName, and returns:
-//   - a ShutdownFunc to call during application teardown,
-//   - or an error if any step fails.
+// Init configures OpenTelemetry for metrics and traces using OTLP over gRPC.
+// It initializes the necessary providers for telemetry data collection and export.
 //
-// The returned ShutdownFunc will cleanly shutdown metrics, tracer, and logger.
+// Parameters:
+//   - ctx: A context.Context for managing the initialization process.
+//   - serviceName: A string representing the logical name of the service, used to
+//     identify telemetry data in the observability backend.
+//
+// Returns:
+//   - ShutdownFunc: A function to be called during application shutdown to ensure
+//     all telemetry data is flushed and providers are stopped gracefully.
+//   - error: An error if any part of the initialization process fails.
+//
+// The returned ShutdownFunc will handle the clean shutdown of metrics and tracer
+// providers, ensuring no data is lost during application termination. Note that
+// logging setup might be handled separately or integrated based on the application's
+// configuration.
 func Init(ctx context.Context, serviceName string) (ShutdownFunc, error) {
 	res, err := newResource(serviceName)
 	if err != nil {
@@ -119,16 +102,10 @@ func Init(ctx context.Context, serviceName string) (ShutdownFunc, error) {
 		return nil, err
 	}
 
-	lp, err := initLoggerProvider(ctx, res)
-	if err != nil {
-		return nil, err
-	}
-
 	return func(ctx context.Context) error {
 		errs := []error{
 			mp.Shutdown(ctx),
 			tp.Shutdown(ctx),
-			lp.Shutdown(ctx),
 		}
 		return errors.Join(errs...)
 	}, nil

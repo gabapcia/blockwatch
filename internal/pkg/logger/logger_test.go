@@ -2,179 +2,166 @@ package logger
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"os/exec"
 	"sync"
 	"testing"
 
-	"github.com/gabapcia/blockwatch/internal/pkg/telemetry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 // resetLogger resets the global logger state for testing
 func resetLogger() {
-	logger = nil
-	initOnce = sync.Once{}
-}
-
-func TestWithLevel(t *testing.T) {
-	t.Run("debug level", func(t *testing.T) {
-		cfg := &config{}
-		opt := WithLevel("debug")
-		opt(cfg)
-		assert.Equal(t, "debug", cfg.level)
-	})
-
-	t.Run("info level", func(t *testing.T) {
-		cfg := &config{}
-		opt := WithLevel("info")
-		opt(cfg)
-		assert.Equal(t, "info", cfg.level)
-	})
-
-	t.Run("warn level", func(t *testing.T) {
-		cfg := &config{}
-		opt := WithLevel("warn")
-		opt(cfg)
-		assert.Equal(t, "warn", cfg.level)
-	})
-
-	t.Run("error level", func(t *testing.T) {
-		cfg := &config{}
-		opt := WithLevel("error")
-		opt(cfg)
-		assert.Equal(t, "error", cfg.level)
-	})
-
-	t.Run("panic level", func(t *testing.T) {
-		cfg := &config{}
-		opt := WithLevel("panic")
-		opt(cfg)
-		assert.Equal(t, "panic", cfg.level)
-	})
-
-	t.Run("fatal level", func(t *testing.T) {
-		cfg := &config{}
-		opt := WithLevel("fatal")
-		opt(cfg)
-		assert.Equal(t, "fatal", cfg.level)
-	})
+	baseLogger = nil
+	initBaseLoggerOnce = sync.Once{}
 }
 
 func TestInit(t *testing.T) {
-	t.Run("default initialization", func(t *testing.T) {
+	t.Run("successful initialization with valid level", func(t *testing.T) {
 		resetLogger()
-		err := Init()
+		err := Init("info")
 		require.NoError(t, err)
-		assert.NotNil(t, logger)
+		assert.NotNil(t, baseLogger)
 	})
 
-	t.Run("with debug level", func(t *testing.T) {
+	t.Run("successful initialization with debug level", func(t *testing.T) {
 		resetLogger()
-		err := Init(WithLevel("debug"))
+		err := Init("debug")
 		require.NoError(t, err)
-		assert.NotNil(t, logger)
+		assert.NotNil(t, baseLogger)
 	})
 
-	t.Run("with info level", func(t *testing.T) {
+	t.Run("successful initialization with warn level", func(t *testing.T) {
 		resetLogger()
-		err := Init(WithLevel("info"))
+		err := Init("warn")
 		require.NoError(t, err)
-		assert.NotNil(t, logger)
+		assert.NotNil(t, baseLogger)
 	})
 
-	t.Run("with warn level", func(t *testing.T) {
+	t.Run("successful initialization with error level", func(t *testing.T) {
 		resetLogger()
-		err := Init(WithLevel("warn"))
+		err := Init("error")
 		require.NoError(t, err)
-		assert.NotNil(t, logger)
+		assert.NotNil(t, baseLogger)
 	})
 
-	t.Run("with error level", func(t *testing.T) {
+	t.Run("error with invalid level", func(t *testing.T) {
 		resetLogger()
-		err := Init(WithLevel("error"))
-		require.NoError(t, err)
-		assert.NotNil(t, logger)
-	})
-
-	t.Run("with panic level", func(t *testing.T) {
-		resetLogger()
-		err := Init(WithLevel("panic"))
-		require.NoError(t, err)
-		assert.NotNil(t, logger)
-	})
-
-	t.Run("with fatal level", func(t *testing.T) {
-		resetLogger()
-		err := Init(WithLevel("fatal"))
-		require.NoError(t, err)
-		assert.NotNil(t, logger)
-	})
-
-	t.Run("with invalid level", func(t *testing.T) {
-		resetLogger()
-		err := Init(WithLevel("invalid"))
+		err := Init("invalid")
 		assert.Error(t, err)
-	})
-
-	t.Run("with multiple options", func(t *testing.T) {
-		resetLogger()
-		err := Init(WithLevel("debug"), WithLevel("info")) // last one wins
-		require.NoError(t, err)
-		assert.NotNil(t, logger)
+		assert.Nil(t, baseLogger)
 	})
 
 	t.Run("init only once", func(t *testing.T) {
 		resetLogger()
 
 		// First initialization
-		err1 := Init(WithLevel("debug"))
+		err1 := Init("debug")
 		require.NoError(t, err1)
-		firstLogger := logger
+		firstLogger := baseLogger
 
 		// Second initialization should not change the logger
-		err2 := Init(WithLevel("error"))
+		err2 := Init("error")
 		require.NoError(t, err2)
-		assert.Equal(t, firstLogger, logger, "Init() should only initialize once")
+		assert.Equal(t, firstLogger, baseLogger, "Init() should only initialize once")
+	})
+}
+
+func TestDeriveFromCtx(t *testing.T) {
+	resetLogger()
+	err := Init("debug")
+	require.NoError(t, err)
+
+	t.Run("derive from context without logger", func(t *testing.T) {
+		ctx := t.Context()
+		logger := deriveFromCtx(ctx, "key", "value")
+		assert.NotNil(t, logger)
 	})
 
-	t.Run("with telemetry integration", func(t *testing.T) {
-		resetLogger()
-
-		// Initialize telemetry first to test the integration path
+	t.Run("derive from context with existing logger", func(t *testing.T) {
 		ctx := t.Context()
-		shutdownFunc, err := telemetry.Init(ctx, "test-service")
-		if err != nil {
-			t.Skip("Telemetry initialization failed, skipping telemetry integration test:", err)
-		}
-		defer func() {
-			if shutdownFunc != nil {
-				shutdownFunc(ctx)
-			}
-		}()
+		existingLogger := baseLogger.With("existing", "logger")
+		ctx = context.WithValue(ctx, ctxKey, existingLogger)
 
-		// Now initialize logger - this should cover the telemetry integration branch
-		err = Init(WithLevel("info"))
-		require.NoError(t, err)
+		logger := deriveFromCtx(ctx, "key", "value")
 		assert.NotNil(t, logger)
+	})
 
-		// Test that logging still works with telemetry integration
-		assert.NotPanics(t, func() {
-			Info(ctx, "test message with telemetry")
-		})
+	t.Run("derive with trace context", func(t *testing.T) {
+		// Create a tracer and span
+		tracer := otel.Tracer("test")
+		ctx, span := tracer.Start(t.Context(), "test-span")
+		defer span.End()
+
+		logger := deriveFromCtx(ctx, "key", "value")
+		assert.NotNil(t, logger)
+	})
+
+	t.Run("derive with no additional keys", func(t *testing.T) {
+		ctx := t.Context()
+		logger := deriveFromCtx(ctx)
+		assert.NotNil(t, logger)
+	})
+
+	t.Run("derive with multiple key-value pairs", func(t *testing.T) {
+		ctx := t.Context()
+		logger := deriveFromCtx(ctx, "key1", "value1", "key2", 42, "key3", true)
+		assert.NotNil(t, logger)
+	})
+}
+
+func TestDerive(t *testing.T) {
+	resetLogger()
+	err := Init("debug")
+	require.NoError(t, err)
+
+	t.Run("derive context with key-value pairs", func(t *testing.T) {
+		ctx := t.Context()
+		derivedCtx := Derive(ctx, "key", "value")
+
+		// Check that the derived context contains a logger
+		logger, ok := derivedCtx.Value(ctxKey).(*zap.SugaredLogger)
+		assert.True(t, ok)
+		assert.NotNil(t, logger)
+	})
+
+	t.Run("derive context with no key-value pairs", func(t *testing.T) {
+		ctx := t.Context()
+		derivedCtx := Derive(ctx)
+
+		// Check that the derived context contains a logger
+		logger, ok := derivedCtx.Value(ctxKey).(*zap.SugaredLogger)
+		assert.True(t, ok)
+		assert.NotNil(t, logger)
+	})
+
+	t.Run("derive context with multiple key-value pairs", func(t *testing.T) {
+		ctx := t.Context()
+		derivedCtx := Derive(ctx, "key1", "value1", "key2", 42)
+
+		// Check that the derived context contains a logger
+		logger, ok := derivedCtx.Value(ctxKey).(*zap.SugaredLogger)
+		assert.True(t, ok)
+		assert.NotNil(t, logger)
 	})
 }
 
 func TestSync(t *testing.T) {
 	t.Run("sync after init", func(t *testing.T) {
 		resetLogger()
-		err := Init()
+		err := Init("info")
 		require.NoError(t, err)
 
-		// Note: Sync may return an error when stdout is redirected in tests
-		// The important thing is that it doesn't panic
-		Sync()
+		// Sync should not panic and may return an error (which is fine for stdout)
+		assert.NotPanics(t, func() {
+			Sync()
+		})
 	})
 
 	t.Run("sync without init panics", func(t *testing.T) {
@@ -186,442 +173,177 @@ func TestSync(t *testing.T) {
 	})
 }
 
-func TestDebug(t *testing.T) {
-	t.Run("debug with message and key-value pairs", func(t *testing.T) {
-		resetLogger()
-		err := Init(WithLevel("debug"))
-		require.NoError(t, err)
+func TestLog(t *testing.T) {
+	resetLogger()
+	err := Init("debug")
+	require.NoError(t, err)
 
-		ctx := t.Context()
-		msg := "test debug message"
-		key := "testKey"
-		value := "testValue"
+	t.Run("log with context containing logger", func(t *testing.T) {
+		ctx := Derive(t.Context(), "test", "value")
 
-		// Test that Debug doesn't panic
 		assert.NotPanics(t, func() {
-			Debug(ctx, msg, key, value)
+			log(ctx, zapcore.InfoLevel, "test message", "key", "value")
+		})
+	})
+
+	t.Run("log with context without logger", func(t *testing.T) {
+		ctx := t.Context()
+
+		assert.NotPanics(t, func() {
+			log(ctx, zapcore.InfoLevel, "test message", "key", "value")
+		})
+	})
+
+	t.Run("log with different levels", func(t *testing.T) {
+		ctx := t.Context()
+
+		levels := []zapcore.Level{
+			zapcore.DebugLevel,
+			zapcore.InfoLevel,
+			zapcore.WarnLevel,
+			zapcore.ErrorLevel,
+		}
+
+		for _, level := range levels {
+			assert.NotPanics(t, func() {
+				log(ctx, level, "test message", "key", "value")
+			})
+		}
+	})
+}
+
+func TestDebug(t *testing.T) {
+	resetLogger()
+	err := Init("debug")
+	require.NoError(t, err)
+
+	t.Run("debug with message and key-value pairs", func(t *testing.T) {
+		ctx := t.Context()
+		assert.NotPanics(t, func() {
+			Debug(ctx, "debug message", "key", "value")
 		})
 	})
 
 	t.Run("debug without key-value pairs", func(t *testing.T) {
-		resetLogger()
-		err := Init(WithLevel("debug"))
-		require.NoError(t, err)
-
 		ctx := t.Context()
-		msg := "test debug message without context"
-
-		// Test that Debug doesn't panic
 		assert.NotPanics(t, func() {
-			Debug(ctx, msg)
+			Debug(ctx, "debug message")
 		})
 	})
 
-	t.Run("debug with different log level", func(t *testing.T) {
-		resetLogger()
-		err := Init(WithLevel("info"))
-		require.NoError(t, err)
-
-		ctx := t.Context()
-		msg := "test debug message"
-
-		// Test that Debug doesn't panic even when log level is higher
+	t.Run("debug with derived context", func(t *testing.T) {
+		ctx := Derive(t.Context(), "context", "derived")
 		assert.NotPanics(t, func() {
-			Debug(ctx, msg)
-		})
-	})
-
-	t.Run("key-value pairs", func(t *testing.T) {
-		resetLogger()
-		err := Init(WithLevel("debug"))
-		require.NoError(t, err)
-
-		ctx := t.Context()
-		msg := "test debug message with context"
-
-		t.Run("single key-value pair", func(t *testing.T) {
-			keysAndValues := []any{"key1", "value1"}
-
-			// Test that Debug doesn't panic with key-value pairs
-			assert.NotPanics(t, func() {
-				Debug(ctx, msg, keysAndValues...)
-			})
-		})
-
-		t.Run("multiple key-value pairs", func(t *testing.T) {
-			keysAndValues := []any{"key1", "value1", "key2", 42, "key3", true}
-
-			// Test that Debug doesn't panic with multiple key-value pairs
-			assert.NotPanics(t, func() {
-				Debug(ctx, msg, keysAndValues...)
-			})
-		})
-
-		t.Run("no key-value pairs", func(t *testing.T) {
-			keysAndValues := []any{}
-
-			// Test that Debug doesn't panic with no key-value pairs
-			assert.NotPanics(t, func() {
-				Debug(ctx, msg, keysAndValues...)
-			})
-		})
-
-		t.Run("odd number of key-value pairs", func(t *testing.T) {
-			keysAndValues := []any{"key1", "value1", "key2"} // Missing value for key2
-
-			// Test that Debug doesn't panic with odd number of arguments
-			assert.NotPanics(t, func() {
-				Debug(ctx, msg, keysAndValues...)
-			})
+			Debug(ctx, "debug message", "key", "value")
 		})
 	})
 }
 
 func TestInfo(t *testing.T) {
+	resetLogger()
+	err := Init("info")
+	require.NoError(t, err)
+
 	t.Run("info with message and key-value pairs", func(t *testing.T) {
-		resetLogger()
-		err := Init(WithLevel("info"))
-		require.NoError(t, err)
-
 		ctx := t.Context()
-		msg := "test info message"
-		key := "infoKey"
-		value := 42
-
-		// Test that Info doesn't panic
 		assert.NotPanics(t, func() {
-			Info(ctx, msg, key, value)
+			Info(ctx, "info message", "key", "value")
 		})
 	})
 
 	t.Run("info without key-value pairs", func(t *testing.T) {
-		resetLogger()
-		err := Init(WithLevel("info"))
-		require.NoError(t, err)
-
 		ctx := t.Context()
-		msg := "test info message without context"
-
-		// Test that Info doesn't panic
 		assert.NotPanics(t, func() {
-			Info(ctx, msg)
+			Info(ctx, "info message")
 		})
 	})
 
-	t.Run("info with different log level", func(t *testing.T) {
-		resetLogger()
-		err := Init(WithLevel("warn"))
-		require.NoError(t, err)
-
-		ctx := t.Context()
-		msg := "test info message"
-
-		// Test that Info doesn't panic even when log level is higher
+	t.Run("info with derived context", func(t *testing.T) {
+		ctx := Derive(t.Context(), "context", "derived")
 		assert.NotPanics(t, func() {
-			Info(ctx, msg)
-		})
-	})
-
-	t.Run("key-value pairs", func(t *testing.T) {
-		resetLogger()
-		err := Init(WithLevel("info"))
-		require.NoError(t, err)
-
-		ctx := t.Context()
-		msg := "test info message with context"
-
-		t.Run("single key-value pair", func(t *testing.T) {
-			keysAndValues := []any{"key1", "value1"}
-
-			// Test that Info doesn't panic with key-value pairs
-			assert.NotPanics(t, func() {
-				Info(ctx, msg, keysAndValues...)
-			})
-		})
-
-		t.Run("multiple key-value pairs", func(t *testing.T) {
-			keysAndValues := []any{"key1", "value1", "key2", 42, "key3", true}
-
-			// Test that Info doesn't panic with multiple key-value pairs
-			assert.NotPanics(t, func() {
-				Info(ctx, msg, keysAndValues...)
-			})
-		})
-
-		t.Run("no key-value pairs", func(t *testing.T) {
-			keysAndValues := []any{}
-
-			// Test that Info doesn't panic with no key-value pairs
-			assert.NotPanics(t, func() {
-				Info(ctx, msg, keysAndValues...)
-			})
-		})
-
-		t.Run("odd number of key-value pairs", func(t *testing.T) {
-			keysAndValues := []any{"key1", "value1", "key2"} // Missing value for key2
-
-			// Test that Info doesn't panic with odd number of arguments
-			assert.NotPanics(t, func() {
-				Info(ctx, msg, keysAndValues...)
-			})
+			Info(ctx, "info message", "key", "value")
 		})
 	})
 }
 
 func TestWarn(t *testing.T) {
-	t.Run("warn with message", func(t *testing.T) {
-		resetLogger()
-		err := Init(WithLevel("warn"))
-		require.NoError(t, err)
+	resetLogger()
+	err := Init("warn")
+	require.NoError(t, err)
 
+	t.Run("warn with message and key-value pairs", func(t *testing.T) {
 		ctx := t.Context()
-		msg := "test warn message"
-
-		// Test that Warn doesn't panic
 		assert.NotPanics(t, func() {
-			Warn(ctx, msg)
+			Warn(ctx, "warn message", "key", "value")
 		})
 	})
 
-	t.Run("warn with key-value pairs", func(t *testing.T) {
-		resetLogger()
-		err := Init(WithLevel("warn"))
-		require.NoError(t, err)
-
+	t.Run("warn without key-value pairs", func(t *testing.T) {
 		ctx := t.Context()
-		msg := "test warn message"
-		key := "warnKey"
-		value := "warnValue"
-
-		// Test that Warn doesn't panic
 		assert.NotPanics(t, func() {
-			Warn(ctx, msg, key, value)
+			Warn(ctx, "warn message")
 		})
 	})
 
-	t.Run("warn with different log level", func(t *testing.T) {
-		resetLogger()
-		err := Init(WithLevel("error"))
-		require.NoError(t, err)
-
-		ctx := t.Context()
-		msg := "test warn message"
-
-		// Test that Warn doesn't panic even when log level is higher
+	t.Run("warn with derived context", func(t *testing.T) {
+		ctx := Derive(t.Context(), "context", "derived")
 		assert.NotPanics(t, func() {
-			Warn(ctx, msg)
-		})
-	})
-
-	t.Run("key-value pairs", func(t *testing.T) {
-		resetLogger()
-		err := Init(WithLevel("warn"))
-		require.NoError(t, err)
-
-		ctx := t.Context()
-		msg := "test warn message with context"
-
-		t.Run("single key-value pair", func(t *testing.T) {
-			keysAndValues := []any{"key1", "value1"}
-
-			// Test that Warn doesn't panic with key-value pairs
-			assert.NotPanics(t, func() {
-				Warn(ctx, msg, keysAndValues...)
-			})
-		})
-
-		t.Run("multiple key-value pairs", func(t *testing.T) {
-			keysAndValues := []any{"key1", "value1", "key2", 42, "key3", true}
-
-			// Test that Warn doesn't panic with multiple key-value pairs
-			assert.NotPanics(t, func() {
-				Warn(ctx, msg, keysAndValues...)
-			})
-		})
-
-		t.Run("no key-value pairs", func(t *testing.T) {
-			keysAndValues := []any{}
-
-			// Test that Warn doesn't panic with no key-value pairs
-			assert.NotPanics(t, func() {
-				Warn(ctx, msg, keysAndValues...)
-			})
-		})
-
-		t.Run("odd number of key-value pairs", func(t *testing.T) {
-			keysAndValues := []any{"key1", "value1", "key2"} // Missing value for key2
-
-			// Test that Warn doesn't panic with odd number of arguments
-			assert.NotPanics(t, func() {
-				Warn(ctx, msg, keysAndValues...)
-			})
+			Warn(ctx, "warn message", "key", "value")
 		})
 	})
 }
 
 func TestError(t *testing.T) {
+	resetLogger()
+	err := Init("error")
+	require.NoError(t, err)
+
 	t.Run("error with message and key-value pairs", func(t *testing.T) {
-		resetLogger()
-		err := Init(WithLevel("error"))
-		require.NoError(t, err)
-
 		ctx := t.Context()
-		msg := "test error message"
-		errorKey := "error"
-		errorValue := "something went wrong"
-
-		// Test that Error doesn't panic
 		assert.NotPanics(t, func() {
-			Error(ctx, msg, errorKey, errorValue)
+			Error(ctx, "error message", "key", "value")
 		})
 	})
 
 	t.Run("error without key-value pairs", func(t *testing.T) {
-		resetLogger()
-		err := Init(WithLevel("error"))
-		require.NoError(t, err)
-
 		ctx := t.Context()
-		msg := "test error message without context"
-
-		// Test that Error doesn't panic
 		assert.NotPanics(t, func() {
-			Error(ctx, msg)
+			Error(ctx, "error message")
 		})
 	})
 
-	t.Run("error with same log level", func(t *testing.T) {
-		resetLogger()
-		err := Init(WithLevel("error"))
-		require.NoError(t, err)
-
-		ctx := t.Context()
-		msg := "test error message"
-
-		// Test that Error doesn't panic
+	t.Run("error with derived context", func(t *testing.T) {
+		ctx := Derive(t.Context(), "context", "derived")
 		assert.NotPanics(t, func() {
-			Error(ctx, msg)
-		})
-	})
-
-	t.Run("key-value pairs", func(t *testing.T) {
-		resetLogger()
-		err := Init(WithLevel("error"))
-		require.NoError(t, err)
-
-		ctx := t.Context()
-		msg := "test error message with context"
-
-		t.Run("single key-value pair", func(t *testing.T) {
-			keysAndValues := []any{"key1", "value1"}
-
-			// Test that Error doesn't panic with key-value pairs
-			assert.NotPanics(t, func() {
-				Error(ctx, msg, keysAndValues...)
-			})
-		})
-
-		t.Run("multiple key-value pairs", func(t *testing.T) {
-			keysAndValues := []any{"key1", "value1", "key2", 42, "key3", true}
-
-			// Test that Error doesn't panic with multiple key-value pairs
-			assert.NotPanics(t, func() {
-				Error(ctx, msg, keysAndValues...)
-			})
-		})
-
-		t.Run("no key-value pairs", func(t *testing.T) {
-			keysAndValues := []any{}
-
-			// Test that Error doesn't panic with no key-value pairs
-			assert.NotPanics(t, func() {
-				Error(ctx, msg, keysAndValues...)
-			})
-		})
-
-		t.Run("odd number of key-value pairs", func(t *testing.T) {
-			keysAndValues := []any{"key1", "value1", "key2"} // Missing value for key2
-
-			// Test that Error doesn't panic with odd number of arguments
-			assert.NotPanics(t, func() {
-				Error(ctx, msg, keysAndValues...)
-			})
+			Error(ctx, "error message", "key", "value")
 		})
 	})
 }
 
 func TestPanic(t *testing.T) {
+	resetLogger()
+	err := Init("debug")
+	require.NoError(t, err)
+
 	t.Run("panic with message", func(t *testing.T) {
-		resetLogger()
-		err := Init(WithLevel("panic"))
-		require.NoError(t, err)
-
 		ctx := t.Context()
-		msg := "test panic message"
-
 		assert.Panics(t, func() {
-			Panic(ctx, msg)
+			Panic(ctx, "panic message")
 		}, "Panic() should panic")
 	})
 
 	t.Run("panic with key-value pairs", func(t *testing.T) {
-		resetLogger()
-		err := Init(WithLevel("panic"))
-		require.NoError(t, err)
-
 		ctx := t.Context()
-		msg := "test panic message"
-		key := "panicKey"
-		value := "panicValue"
-
 		assert.Panics(t, func() {
-			Panic(ctx, msg, key, value)
+			Panic(ctx, "panic message", "key", "value")
 		}, "Panic() should panic")
 	})
 
-	t.Run("key-value pairs", func(t *testing.T) {
-		resetLogger()
-		err := Init(WithLevel("panic"))
-		require.NoError(t, err)
-
-		ctx := t.Context()
-		msg := "test panic message with context"
-
-		t.Run("single key-value pair", func(t *testing.T) {
-			keysAndValues := []any{"key1", "value1"}
-
-			// Test that Panic panics with key-value pairs
-			assert.Panics(t, func() {
-				Panic(ctx, msg, keysAndValues...)
-			})
-		})
-
-		t.Run("multiple key-value pairs", func(t *testing.T) {
-			keysAndValues := []any{"key1", "value1", "key2", 42, "key3", true}
-
-			// Test that Panic panics with multiple key-value pairs
-			assert.Panics(t, func() {
-				Panic(ctx, msg, keysAndValues...)
-			})
-		})
-
-		t.Run("no key-value pairs", func(t *testing.T) {
-			keysAndValues := []any{}
-
-			// Test that Panic panics with no key-value pairs
-			assert.Panics(t, func() {
-				Panic(ctx, msg, keysAndValues...)
-			})
-		})
-
-		t.Run("odd number of key-value pairs", func(t *testing.T) {
-			keysAndValues := []any{"key1", "value1", "key2"} // Missing value for key2
-
-			// Test that Panic panics with odd number of arguments
-			assert.Panics(t, func() {
-				Panic(ctx, msg, keysAndValues...)
-			})
-		})
+	t.Run("panic with derived context", func(t *testing.T) {
+		ctx := Derive(t.Context(), "context", "derived")
+		assert.Panics(t, func() {
+			Panic(ctx, "panic message", "key", "value")
+		}, "Panic() should panic")
 	})
 }
 
@@ -629,10 +351,10 @@ func TestFatal(t *testing.T) {
 	t.Run("fatal exits with code 1", func(t *testing.T) {
 		// This subprocess will execute the Fatal call.
 		if os.Getenv("TEST_FATAL_SUBPROCESS") == "1" {
-			// initialize logger (so logger.Fatal is wired up)
-			_ = Init(WithLevel("debug"))
+			// initialize logger
+			_ = Init("debug")
 			// this will call os.Exit(1)
-			Fatal(t.Context(), "fatal error for test")
+			Fatal(context.Background(), "fatal error for test")
 			return
 		}
 
@@ -653,117 +375,188 @@ func TestFatal(t *testing.T) {
 		assert.Contains(t, stdout.String(), `"level":"fatal"`)
 	})
 
-	t.Run("key-value pairs", func(t *testing.T) {
-		t.Run("single key-value pair", func(t *testing.T) {
-			// This subprocess will execute the Fatal call.
-			if os.Getenv("TEST_FATAL_SINGLE_KV_SUBPROCESS") == "1" {
-				// initialize logger (so logger.Fatal is wired up)
-				_ = Init(WithLevel("debug"))
-				keysAndValues := []any{"key1", "value1"}
-				// this will call os.Exit(1)
-				Fatal(t.Context(), "fatal error for test", keysAndValues...)
-				return
-			}
+	t.Run("fatal with key-value pairs", func(t *testing.T) {
+		// This subprocess will execute the Fatal call.
+		if os.Getenv("TEST_FATAL_KV_SUBPROCESS") == "1" {
+			// initialize logger
+			_ = Init("debug")
+			// this will call os.Exit(1)
+			Fatal(context.Background(), "fatal error for test", "key", "value")
+			return
+		}
 
-			// Build a command that re-runs this test in a subprocess.
-			cmd := exec.Command(os.Args[0], "-test.run=TestFatal")
-			cmd.Env = append(os.Environ(), "TEST_FATAL_SINGLE_KV_SUBPROCESS=1")
+		// Build a command that re-runs this test in a subprocess.
+		cmd := exec.Command(os.Args[0], "-test.run=TestFatal")
+		cmd.Env = append(os.Environ(), "TEST_FATAL_KV_SUBPROCESS=1")
 
-			var stdout, stderr bytes.Buffer
-			cmd.Stdout = &stdout
-			cmd.Stderr = &stderr
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
 
-			err := cmd.Run()
-			exitErr, ok := err.(*exec.ExitError)
-			assert.True(t, ok, "the subprocess should exit with a non-zero status")
-			assert.Equal(t, 1, exitErr.ExitCode(), "logger.Fatal should terminate with exit code 1")
+		err := cmd.Run()
+		exitErr, ok := err.(*exec.ExitError)
+		assert.True(t, ok, "the subprocess should exit with a non-zero status")
+		assert.Equal(t, 1, exitErr.ExitCode(), "logger.Fatal should terminate with exit code 1")
 
-			// Assert that the log message appears on stdout:
-			assert.Contains(t, stdout.String(), `"level":"fatal"`)
+		// Assert that the log message appears on stdout:
+		assert.Contains(t, stdout.String(), `"level":"fatal"`)
+	})
+
+	t.Run("fatal with derived context", func(t *testing.T) {
+		// This subprocess will execute the Fatal call.
+		if os.Getenv("TEST_FATAL_DERIVED_SUBPROCESS") == "1" {
+			// initialize logger
+			_ = Init("debug")
+			ctx := Derive(context.Background(), "context", "derived")
+			// this will call os.Exit(1)
+			Fatal(ctx, "fatal error for test", "key", "value")
+			return
+		}
+
+		// Build a command that re-runs this test in a subprocess.
+		cmd := exec.Command(os.Args[0], "-test.run=TestFatal")
+		cmd.Env = append(os.Environ(), "TEST_FATAL_DERIVED_SUBPROCESS=1")
+
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+
+		err := cmd.Run()
+		exitErr, ok := err.(*exec.ExitError)
+		assert.True(t, ok, "the subprocess should exit with a non-zero status")
+		assert.Equal(t, 1, exitErr.ExitCode(), "logger.Fatal should terminate with exit code 1")
+
+		// Assert that the log message appears on stdout:
+		assert.Contains(t, stdout.String(), `"level":"fatal"`)
+	})
+}
+
+func TestTraceIntegration(t *testing.T) {
+	resetLogger()
+	err := Init("debug")
+	require.NoError(t, err)
+
+	t.Run("logging with trace context", func(t *testing.T) {
+		// Create a tracer and span
+		tracer := otel.Tracer("test")
+		ctx, span := tracer.Start(t.Context(), "test-span")
+		defer span.End()
+
+		// Test that logging with trace context doesn't panic
+		assert.NotPanics(t, func() {
+			Info(ctx, "test message with trace", "key", "value")
+		})
+	})
+
+	t.Run("derive context with trace", func(t *testing.T) {
+		// Create a tracer and span
+		tracer := otel.Tracer("test")
+		ctx, span := tracer.Start(t.Context(), "test-span")
+		defer span.End()
+
+		// Derive context with trace
+		derivedCtx := Derive(ctx, "derived", "value")
+
+		// Test that logging with derived trace context doesn't panic
+		assert.NotPanics(t, func() {
+			Info(derivedCtx, "test message with derived trace", "key", "value")
+		})
+	})
+
+	t.Run("derive with context containing valid span context", func(t *testing.T) {
+		// Create a span context with valid trace and span IDs
+		traceID, _ := trace.TraceIDFromHex("4bf92f3577b34da6a3ce929d0e0e4736")
+		spanID, _ := trace.SpanIDFromHex("00f067aa0ba902b7")
+		spanContext := trace.NewSpanContext(trace.SpanContextConfig{
+			TraceID: traceID,
+			SpanID:  spanID,
 		})
 
-		t.Run("multiple key-value pairs", func(t *testing.T) {
-			// This subprocess will execute the Fatal call.
-			if os.Getenv("TEST_FATAL_MULTIPLE_KV_SUBPROCESS") == "1" {
-				// initialize logger (so logger.Fatal is wired up)
-				_ = Init(WithLevel("debug"))
-				keysAndValues := []any{"key1", "value1", "key2", 42, "key3", true}
-				// this will call os.Exit(1)
-				Fatal(t.Context(), "fatal error for test", keysAndValues...)
-				return
-			}
+		// Create context with the span context
+		ctx := trace.ContextWithSpanContext(t.Context(), spanContext)
 
-			// Build a command that re-runs this test in a subprocess.
-			cmd := exec.Command(os.Args[0], "-test.run=TestFatal")
-			cmd.Env = append(os.Environ(), "TEST_FATAL_MULTIPLE_KV_SUBPROCESS=1")
+		// Test deriveFromCtx with valid span context
+		logger := deriveFromCtx(ctx, "key", "value")
+		assert.NotNil(t, logger)
+	})
 
-			var stdout, stderr bytes.Buffer
-			cmd.Stdout = &stdout
-			cmd.Stderr = &stderr
-
-			err := cmd.Run()
-			exitErr, ok := err.(*exec.ExitError)
-			assert.True(t, ok, "the subprocess should exit with a non-zero status")
-			assert.Equal(t, 1, exitErr.ExitCode(), "logger.Fatal should terminate with exit code 1")
-
-			// Assert that the log message appears on stdout:
-			assert.Contains(t, stdout.String(), `"level":"fatal"`)
+	t.Run("derive with context containing span context with only trace ID", func(t *testing.T) {
+		// Create a span context with only trace ID
+		traceID, _ := trace.TraceIDFromHex("4bf92f3577b34da6a3ce929d0e0e4736")
+		spanContext := trace.NewSpanContext(trace.SpanContextConfig{
+			TraceID: traceID,
 		})
 
-		t.Run("no key-value pairs", func(t *testing.T) {
-			// This subprocess will execute the Fatal call.
-			if os.Getenv("TEST_FATAL_NO_KV_SUBPROCESS") == "1" {
-				// initialize logger (so logger.Fatal is wired up)
-				_ = Init(WithLevel("debug"))
-				keysAndValues := []any{}
-				// this will call os.Exit(1)
-				Fatal(t.Context(), "fatal error for test", keysAndValues...)
-				return
-			}
+		// Create context with the span context
+		ctx := trace.ContextWithSpanContext(t.Context(), spanContext)
 
-			// Build a command that re-runs this test in a subprocess.
-			cmd := exec.Command(os.Args[0], "-test.run=TestFatal")
-			cmd.Env = append(os.Environ(), "TEST_FATAL_NO_KV_SUBPROCESS=1")
+		// Test deriveFromCtx with trace ID only
+		logger := deriveFromCtx(ctx, "key", "value")
+		assert.NotNil(t, logger)
+	})
 
-			var stdout, stderr bytes.Buffer
-			cmd.Stdout = &stdout
-			cmd.Stderr = &stderr
-
-			err := cmd.Run()
-			exitErr, ok := err.(*exec.ExitError)
-			assert.True(t, ok, "the subprocess should exit with a non-zero status")
-			assert.Equal(t, 1, exitErr.ExitCode(), "logger.Fatal should terminate with exit code 1")
-
-			// Assert that the log message appears on stdout:
-			assert.Contains(t, stdout.String(), `"level":"fatal"`)
+	t.Run("derive with context containing span context with only span ID", func(t *testing.T) {
+		// Create a span context with only span ID
+		spanID, _ := trace.SpanIDFromHex("00f067aa0ba902b7")
+		spanContext := trace.NewSpanContext(trace.SpanContextConfig{
+			SpanID: spanID,
 		})
 
-		t.Run("odd number of key-value pairs", func(t *testing.T) {
-			// This subprocess will execute the Fatal call.
-			if os.Getenv("TEST_FATAL_ODD_KV_SUBPROCESS") == "1" {
-				// initialize logger (so logger.Fatal is wired up)
-				_ = Init(WithLevel("debug"))
-				keysAndValues := []any{"key1", "value1", "key2"} // Missing value for key2
-				// this will call os.Exit(1)
-				Fatal(t.Context(), "fatal error for test", keysAndValues...)
-				return
-			}
+		// Create context with the span context
+		ctx := trace.ContextWithSpanContext(t.Context(), spanContext)
 
-			// Build a command that re-runs this test in a subprocess.
-			cmd := exec.Command(os.Args[0], "-test.run=TestFatal")
-			cmd.Env = append(os.Environ(), "TEST_FATAL_ODD_KV_SUBPROCESS=1")
+		// Test deriveFromCtx with span ID only
+		logger := deriveFromCtx(ctx, "key", "value")
+		assert.NotNil(t, logger)
+	})
 
-			var stdout, stderr bytes.Buffer
-			cmd.Stdout = &stdout
-			cmd.Stderr = &stderr
+	t.Run("derive with empty span context", func(t *testing.T) {
+		// Create an empty span context
+		spanContext := trace.SpanContext{}
 
-			err := cmd.Run()
-			exitErr, ok := err.(*exec.ExitError)
-			assert.True(t, ok, "the subprocess should exit with a non-zero status")
-			assert.Equal(t, 1, exitErr.ExitCode(), "logger.Fatal should terminate with exit code 1")
+		// Create context with the empty span context
+		ctx := trace.ContextWithSpanContext(t.Context(), spanContext)
 
-			// Assert that the log message appears on stdout:
-			assert.Contains(t, stdout.String(), `"level":"fatal"`)
+		// Test deriveFromCtx with empty span context
+		logger := deriveFromCtx(ctx, "key", "value")
+		assert.NotNil(t, logger)
+	})
+}
+
+func TestEdgeCases(t *testing.T) {
+	resetLogger()
+	err := Init("debug")
+	require.NoError(t, err)
+
+	t.Run("nil context values", func(t *testing.T) {
+		ctx := t.Context()
+		assert.NotPanics(t, func() {
+			Info(ctx, "test message", "key", nil)
+		})
+	})
+
+	t.Run("empty message", func(t *testing.T) {
+		ctx := t.Context()
+		assert.NotPanics(t, func() {
+			Info(ctx, "")
+		})
+	})
+
+	t.Run("odd number of key-value pairs", func(t *testing.T) {
+		ctx := t.Context()
+		assert.NotPanics(t, func() {
+			Info(ctx, "test message", "key1", "value1", "key2")
+		})
+	})
+
+	t.Run("complex value types", func(t *testing.T) {
+		ctx := t.Context()
+		complexValue := map[string]interface{}{
+			"nested": map[string]string{"key": "value"},
+			"array":  []int{1, 2, 3},
+		}
+		assert.NotPanics(t, func() {
+			Info(ctx, "test message", "complex", complexValue)
 		})
 	})
 }
