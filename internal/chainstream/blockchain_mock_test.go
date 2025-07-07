@@ -2,7 +2,7 @@
 // github.com/vektra/mockery
 // template: testify
 
-package chainwatch
+package chainstream
 
 import (
 	"context"

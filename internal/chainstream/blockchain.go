@@ -1,4 +1,4 @@
-package chainwatch
+package chainstream
 
 import (
 	"context"

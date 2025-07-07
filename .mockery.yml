@@ -19,7 +19,7 @@ force-file-write: true
 packages:
   github.com/gabapcia/blockwatch:
     config: *default-config
-  github.com/gabapcia/blockwatch/internal/chainwatch:
+  github.com/gabapcia/blockwatch/internal/chainstream:
     config: *in-package-config
     interfaces:
       Service:

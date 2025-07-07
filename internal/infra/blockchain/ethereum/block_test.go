@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gabapcia/blockwatch/internal/chainwatch"
+	"github.com/gabapcia/blockwatch/internal/chainstream"
 	jsonrpctest "github.com/gabapcia/blockwatch/internal/pkg/transport/jsonrpc/mocks"
 	"github.com/gabapcia/blockwatch/internal/pkg/types"
 
@@ -17,26 +17,26 @@ import (
 )
 
 func TestTransactionResponse_toWatcherTransaction(t *testing.T) {
-	t.Run("converts TransactionResponse to chainwatch.Transaction", func(t *testing.T) {
+	t.Run("converts TransactionResponse to chainstream.Transaction", func(t *testing.T) {
 		tr := TransactionResponse{
 			Hash: "0xabc123",
 			From: "0xfrom",
 			To:   "0xto",
 		}
 
-		expected := chainwatch.Transaction{
+		expected := chainstream.Transaction{
 			Hash: "0xabc123",
 			From: "0xfrom",
 			To:   "0xto",
 		}
 
 		result := tr.toWatcherTransaction()
-		assert.Equal(t, expected, result, "converted transaction should match expected chainwatch.Transaction")
+		assert.Equal(t, expected, result, "converted transaction should match expected chainstream.Transaction")
 	})
 }
 
 func TestBlockResponse_toWatcherBlock(t *testing.T) {
-	t.Run("converts BlockResponse to chainwatch.Block", func(t *testing.T) {
+	t.Run("converts BlockResponse to chainstream.Block", func(t *testing.T) {
 		blockResp := BlockResponse{
 			Hash:   "0xblockhash",
 			Number: types.Hex("0x10"),
@@ -50,17 +50,17 @@ func TestBlockResponse_toWatcherBlock(t *testing.T) {
 			},
 		}
 
-		expected := chainwatch.Block{
+		expected := chainstream.Block{
 			Hash:   "0xblockhash",
 			Height: types.Hex("0x10"),
-			Transactions: []chainwatch.Transaction{
+			Transactions: []chainstream.Transaction{
 				{Hash: "0x1", From: "0xA", To: "0xB"},
 				{Hash: "0x2", From: "0xC", To: "0xD"},
 			},
 		}
 
 		result := blockResp.toWatcherBlock()
-		assert.Equal(t, expected, result, "converted block should match expected chainwatch.Block")
+		assert.Equal(t, expected, result, "converted block should match expected chainstream.Block")
 	})
 }
 
@@ -201,7 +201,7 @@ func TestClient_pollNewBlocks(t *testing.T) {
 		}
 
 		c := NewClient(mockClient)
-		events := make(chan chainwatch.BlockchainEvent, 10)
+		events := make(chan chainstream.BlockchainEvent, 10)
 
 		next := c.pollNewBlocks(t.Context(), types.Hex("0x10"), events)
 		assert.Equal(t, types.Hex("0x14"), next, "next block number should be latest + 1 (0x14)")
@@ -227,7 +227,7 @@ func TestClient_pollNewBlocks(t *testing.T) {
 			Return(json.RawMessage(`"0x20"`), nil)
 
 		c := NewClient(mockClient)
-		events := make(chan chainwatch.BlockchainEvent, 1)
+		events := make(chan chainstream.BlockchainEvent, 1)
 
 		next := c.pollNewBlocks(t.Context(), types.Hex("0x20"), events)
 		assert.Equal(t, types.Hex("0x20"), next, "next block number should be unchanged when no new blocks")
@@ -246,7 +246,7 @@ func TestClient_pollNewBlocks(t *testing.T) {
 			Return(nil, expectedErr)
 
 		c := NewClient(mockClient)
-		events := make(chan chainwatch.BlockchainEvent, 1)
+		events := make(chan chainstream.BlockchainEvent, 1)
 
 		next := c.pollNewBlocks(t.Context(), types.Hex("0x5"), events)
 		assert.Equal(t, types.Hex("0x5"), next, "should return fromBlockNumber unchanged on failure")
@@ -281,7 +281,7 @@ func TestClient_pollNewBlocks(t *testing.T) {
 			Return(nil, mockedErr)
 
 		c := NewClient(mockClient)
-		events := make(chan chainwatch.BlockchainEvent, 2)
+		events := make(chan chainstream.BlockchainEvent, 2)
 
 		next := c.pollNewBlocks(t.Context(), types.Hex("0x10"), events)
 		assert.Equal(t, types.Hex("0x12"), next, "next block number should be latest + 1")
@@ -326,7 +326,7 @@ func TestClient_FetchBlockByHeight(t *testing.T) {
 		assert.Equal(t, "0xabc", block.Hash, "block hash should match the JSON response")
 		assert.Len(t, block.Transactions, 1, "there should be exactly one transaction")
 		// Validate transaction conversion
-		expectedTx := chainwatch.Transaction{Hash: "0x1", From: "0xa", To: "0xb"}
+		expectedTx := chainstream.Transaction{Hash: "0x1", From: "0xa", To: "0xb"}
 		assert.Equal(t, expectedTx, block.Transactions[0], "transaction should be converted correctly")
 
 		mockClient.AssertExpectations(t)
@@ -380,7 +380,7 @@ func TestClient_Subscribe(t *testing.T) {
 		eventsCh, err := c.Subscribe(ctx, types.Hex("0x10"))
 		assert.NoError(t, err)
 
-		var events []chainwatch.BlockchainEvent
+		var events []chainstream.BlockchainEvent
 		for ev := range eventsCh {
 			events = append(events, ev)
 		}
@@ -462,7 +462,7 @@ func TestClient_Subscribe(t *testing.T) {
 		eventsCh, err := c.Subscribe(ctx, "")
 		assert.NoError(t, err)
 
-		var events []chainwatch.BlockchainEvent
+		var events []chainstream.BlockchainEvent
 		for ev := range eventsCh {
 			events = append(events, ev)
 		}
@@ -513,7 +513,7 @@ func TestClient_Subscribe(t *testing.T) {
 		eventsCh, err := c.Subscribe(ctx, types.Hex("0x10"))
 		assert.NoError(t, err)
 
-		var events []chainwatch.BlockchainEvent
+		var events []chainstream.BlockchainEvent
 		for ev := range eventsCh {
 			events = append(events, ev)
 		}

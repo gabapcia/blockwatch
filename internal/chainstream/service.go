@@ -1,4 +1,4 @@
-package chainwatch
+package chainstream
 
 import (
 	"context"
@@ -21,7 +21,7 @@ const (
 	observedBlockChannelBufferSize   = 10 // Buffer size for final successfully observed blocks
 )
 
-// Service represents a chainwatch streaming component responsible for subscribing
+// Service represents a chainstream streaming component responsible for subscribing
 // to one or more blockchain networks, handling block retrieval, retry logic,
 // and emitting observed blocks or transformed data for downstream consumers.
 type Service[T any] interface {
@@ -216,7 +216,7 @@ type config struct {
 // It is applied inside the New constructor.
 type Option func(*config)
 
-// New creates a new instance of the chainwatch service that returns ObservedBlock values.
+// New creates a new instance of the chainstream service that returns ObservedBlock values.
 //
 // It requires a map of network identifiers to Blockchain clients.
 // Optional behavior like retry logic, checkpoint persistence, and error handling
@@ -246,7 +246,7 @@ func New(networks map[string]Blockchain, opts ...Option) *service[ObservedBlock]
 	}
 }
 
-// NewWithTransform creates a new instance of the chainwatch service with a custom transform function.
+// NewWithTransform creates a new instance of the chainstream service with a custom transform function.
 //
 // It requires a map of network identifiers to Blockchain clients and a transform function.
 // Optional behavior like retry logic, checkpoint persistence, and error handling

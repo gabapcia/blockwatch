@@ -1,4 +1,4 @@
-// Package ethereum implements the chainwatch.Blockchain interface for Ethereum-compatible nodes.
+// Package ethereum implements the chainstream.Blockchain interface for Ethereum-compatible nodes.
 // It uses a JSON-RPC client to poll for new blocks and stream blockchain events.
 package ethereum
 
@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/gabapcia/blockwatch/internal/chainwatch"
+	"github.com/gabapcia/blockwatch/internal/chainstream"
 	"github.com/gabapcia/blockwatch/internal/pkg/types"
 )
 
@@ -86,23 +86,23 @@ type (
 	}
 )
 
-// toWatcherTransaction converts a TransactionResponse into a chainwatch.Transaction.
-func (t TransactionResponse) toWatcherTransaction() chainwatch.Transaction {
-	return chainwatch.Transaction{
+// toWatcherTransaction converts a TransactionResponse into a chainstream.Transaction.
+func (t TransactionResponse) toWatcherTransaction() chainstream.Transaction {
+	return chainstream.Transaction{
 		Hash: t.Hash,
 		From: t.From,
 		To:   t.To,
 	}
 }
 
-// toWatcherBlock converts a BlockResponse into a chainwatch.Block.
-func (b BlockResponse) toWatcherBlock() chainwatch.Block {
-	out := make([]chainwatch.Transaction, len(b.Transactions))
+// toWatcherBlock converts a BlockResponse into a chainstream.Block.
+func (b BlockResponse) toWatcherBlock() chainstream.Block {
+	out := make([]chainstream.Transaction, len(b.Transactions))
 	for i, tx := range b.Transactions {
 		out[i] = tx.toWatcherTransaction()
 	}
 
-	return chainwatch.Block{
+	return chainstream.Block{
 		Height:       b.Number,
 		Hash:         b.Hash,
 		Transactions: out,
@@ -141,7 +141,7 @@ func (c *client) getBlockByNumber(ctx context.Context, height types.Hex) (BlockR
 //     no new blocks to process. It returns fromHeight immediately, emitting no events.
 //  3. Otherwise, for each height h in the inclusive range [fromHeight, latestHeight]:
 //     a. Calls getBlockByNumber(ctx, h).
-//     b. Converts the raw BlockResponse to chainwatch.Block via toWatcherBlock.
+//     b. Converts the raw BlockResponse to chainstream.Block via toWatcherBlock.
 //     c. Emits a BlockchainEvent on eventsCh containing:
 //     • Height: h
 //     • Block: the converted block (zero-value if an error occurred)
@@ -153,10 +153,10 @@ func (c *client) getBlockByNumber(ctx context.Context, height types.Hex) (BlockR
 // This function itself does not perform any waiting or backoff; it is intended
 // to be invoked periodically (for example, by a time.Ticker in Subscribe),
 // which handles scheduling and context cancellation.
-func (c *client) pollNewBlocks(ctx context.Context, fromHeight types.Hex, eventsCh chan<- chainwatch.BlockchainEvent) types.Hex {
+func (c *client) pollNewBlocks(ctx context.Context, fromHeight types.Hex, eventsCh chan<- chainstream.BlockchainEvent) types.Hex {
 	latestHeight, err := c.getLatestBlockNumber(ctx)
 	if err != nil {
-		eventsCh <- chainwatch.BlockchainEvent{Height: fromHeight, Err: err}
+		eventsCh <- chainstream.BlockchainEvent{Height: fromHeight, Err: err}
 		return fromHeight
 	}
 
@@ -166,7 +166,7 @@ func (c *client) pollNewBlocks(ctx context.Context, fromHeight types.Hex, events
 
 	for h := fromHeight; h.Int() <= latestHeight.Int(); h = h.Add(1) {
 		blockResp, err := c.getBlockByNumber(ctx, h)
-		eventsCh <- chainwatch.BlockchainEvent{
+		eventsCh <- chainstream.BlockchainEvent{
 			Height: h,
 			Block:  blockResp.toWatcherBlock(),
 			Err:    err,
@@ -177,11 +177,11 @@ func (c *client) pollNewBlocks(ctx context.Context, fromHeight types.Hex, events
 }
 
 // FetchBlockByHeight retrieves a single block at the specified height.
-// It returns the converted chainwatch.Block or an error if fetching fails.
-func (c *client) FetchBlockByHeight(ctx context.Context, height types.Hex) (chainwatch.Block, error) {
+// It returns the converted chainstream.Block or an error if fetching fails.
+func (c *client) FetchBlockByHeight(ctx context.Context, height types.Hex) (chainstream.Block, error) {
 	resp, err := c.getBlockByNumber(ctx, height)
 	if err != nil {
-		return chainwatch.Block{}, err
+		return chainstream.Block{}, err
 	}
 
 	return resp.toWatcherBlock(), nil
@@ -190,7 +190,7 @@ func (c *client) FetchBlockByHeight(ctx context.Context, height types.Hex) (chai
 // Subscribe begins streaming new blocks starting at fromHeight (inclusive).
 // If fromHeight is empty, it first fetches the latest height and starts from there.
 // It returns a receive-only channel of BlockchainEvent; the channel is closed when ctx is canceled.
-func (c *client) Subscribe(ctx context.Context, fromHeight types.Hex) (<-chan chainwatch.BlockchainEvent, error) {
+func (c *client) Subscribe(ctx context.Context, fromHeight types.Hex) (<-chan chainstream.BlockchainEvent, error) {
 	if fromHeight.IsEmpty() {
 		h, err := c.getLatestBlockNumber(ctx)
 		if err != nil {
@@ -200,7 +200,7 @@ func (c *client) Subscribe(ctx context.Context, fromHeight types.Hex) (<-chan ch
 		fromHeight = h
 	}
 
-	eventsCh := make(chan chainwatch.BlockchainEvent, eventsChannelBufferSize)
+	eventsCh := make(chan chainstream.BlockchainEvent, eventsChannelBufferSize)
 	go func() {
 		defer close(eventsCh)
 
