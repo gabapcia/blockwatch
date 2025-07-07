@@ -1,10 +1,10 @@
-# ChainWatch Package
+# ChainStream Package
 
-The `chainwatch` package provides a robust, multi-blockchain block streaming service with built-in resilience features and flexible data transformation capabilities. It serves as the core monitoring component within the blockwatch project, designed to observe multiple blockchain networks simultaneously while handling failures gracefully and transforming block data into custom formats.
+The `chainstream` package provides a robust, multi-blockchain block streaming service with built-in resilience features and flexible data transformation capabilities. It serves as the core monitoring component within the blockwatch project, designed to observe multiple blockchain networks simultaneously while handling failures gracefully and transforming block data into custom formats.
 
 ## Package Overview
 
-ChainWatch is a streaming service that subscribes to blockchain networks and emits observed blocks or transformed data through a unified interface. It abstracts away the complexities of network failures, retry logic, checkpoint management, and data transformation, providing a clean stream of blockchain events or custom data structures to consumers.
+ChainStream is a streaming service that subscribes to blockchain networks and emits observed blocks or transformed data through a unified interface. It abstracts away the complexities of network failures, retry logic, checkpoint management, and data transformation, providing a clean stream of blockchain events or custom data structures to consumers.
 
 ## Architecture
 
@@ -12,7 +12,7 @@ ChainWatch is a streaming service that subscribes to blockchain networks and emi
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    ChainWatch Service                        │
+│                    ChainStream Service                      │
 ├─────────────────────────────────────────────────────────────┤
 │  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐ │
 │  │   Blockchain    │  │   Checkpoint    │  │    Retry     │ │
@@ -115,12 +115,12 @@ The service can be created in two ways:
 
 **Standard Service (ObservedBlock output):**
 ```go
-service := chainwatch.New(networks, options...)
+service := chainstream.New(networks, options...)
 ```
 
 **Service with Custom Transform:**
 ```go
-service := chainwatch.NewWithTransform(networks, transformFunc, options...)
+service := chainstream.NewWithTransform(networks, transformFunc, options...)
 ```
 
 ### 2. Block Streaming Process
@@ -148,7 +148,7 @@ The service provides a unified stream of transformed data (type `T`) from all mo
 
 ### 5. Workflow Diagram
 
-Below is a detailed Mermaid diagram illustrating the workflow of the chainwatch package, focusing on the process of subscribing to blockchain networks, processing blocks, handling errors, and delivering data to consumers.
+Below is a detailed Mermaid diagram illustrating the workflow of the chainstream package, focusing on the process of subscribing to blockchain networks, processing blocks, handling errors, and delivering data to consumers.
 
 ```mermaid
 graph TD
@@ -190,7 +190,7 @@ graph TD
     AG --> AH[Reset Service State for Reinitialization]
 ```
 
-This diagram provides a detailed overview of the chainwatch package workflow:
+This diagram provides a detailed overview of the chainstream package workflow:
 - **Initialization and Setup**: The service is initialized, configured with options, and starts with necessary checks and channel setup.
 - **Subscription and Event Processing**: Blockchain subscriptions are established from checkpoints, and events are processed with successful blocks sent for checkpointing and errors routed for handling.
 - **Error Handling and Retry**: Errors are managed with optional retry logic to recover blocks, forwarding unrecoverable failures to a handler.
@@ -203,13 +203,13 @@ This diagram provides a detailed overview of the chainwatch package workflow:
 
 ```go
 // Assume you have blockchain implementations
-networks := map[string]chainwatch.Blockchain{
+networks := map[string]chainstream.Blockchain{
     "ethereum": ethereumClient,
     "polygon":  polygonClient,
 }
 
 // Create service (returns ObservedBlock)
-service := chainwatch.New(networks)
+service := chainstream.New(networks)
 
 // Start monitoring
 ctx := context.Background()
@@ -239,7 +239,7 @@ type BlockSummary struct {
 }
 
 // Create transform function
-transformFunc := func(ob chainwatch.ObservedBlock) BlockSummary {
+transformFunc := func(ob chainstream.ObservedBlock) BlockSummary {
     return BlockSummary{
         Network:     ob.Network,
         Height:      ob.Height.String(),
@@ -250,7 +250,7 @@ transformFunc := func(ob chainwatch.ObservedBlock) BlockSummary {
 }
 
 // Create service with transform
-service := chainwatch.NewWithTransform(networks, transformFunc)
+service := chainstream.NewWithTransform(networks, transformFunc)
 
 // Start monitoring
 ctx := context.Background()
@@ -271,25 +271,25 @@ for summary := range summariesCh {
 
 ```go
 // Standard service with advanced options
-service := chainwatch.New(networks,
+service := chainstream.New(networks,
     // Configure retry strategy
-    chainwatch.WithRetry(retryStrategy),
+    chainstream.WithRetry(retryStrategy),
     
     // Enable checkpoint persistence
-    chainwatch.WithCheckpointStorage(storage),
+    chainstream.WithCheckpointStorage(storage),
     
     // Custom failure handler
-    chainwatch.WithDispatchFailureHandler(func(ctx context.Context, failure chainwatch.BlockDispatchFailure) {
+    chainstream.WithDispatchFailureHandler(func(ctx context.Context, failure chainstream.BlockDispatchFailure) {
         log.Printf("Persistent failure: network=%s height=%s errors=%v", 
             failure.Network, failure.Height, failure.Errors)
     }),
 )
 
 // Service with transform and advanced options
-service := chainwatch.NewWithTransform(networks, transformFunc,
-    chainwatch.WithRetry(retryStrategy),
-    chainwatch.WithCheckpointStorage(storage),
-    chainwatch.WithDispatchFailureHandler(customFailureHandler),
+service := chainstream.NewWithTransform(networks, transformFunc,
+    chainstream.WithRetry(retryStrategy),
+    chainstream.WithCheckpointStorage(storage),
+    chainstream.WithDispatchFailureHandler(customFailureHandler),
 )
 ```
 
@@ -298,19 +298,19 @@ service := chainwatch.NewWithTransform(networks, transformFunc,
 ### WithRetry
 Configure retry logic for transient failures:
 ```go
-chainwatch.WithRetry(retryStrategy)
+chainstream.WithRetry(retryStrategy)
 ```
 
 ### WithCheckpointStorage
 Enable checkpoint persistence to resume from last processed block:
 ```go
-chainwatch.WithCheckpointStorage(storage)
+chainstream.WithCheckpointStorage(storage)
 ```
 
 ### WithDispatchFailureHandler
 Set custom handler for unrecoverable failures:
 ```go
-chainwatch.WithDispatchFailureHandler(handler)
+chainstream.WithDispatchFailureHandler(handler)
 ```
 
 ## Error Handling
@@ -381,7 +381,7 @@ The package expects blockchain implementations to be provided by other component
 
 **Extract Transaction Hashes:**
 ```go
-transformFunc := func(ob chainwatch.ObservedBlock) []string {
+transformFunc := func(ob chainstream.ObservedBlock) []string {
     hashes := make([]string, len(ob.Transactions))
     for i, tx := range ob.Transactions {
         hashes[i] = tx.Hash
@@ -399,7 +399,7 @@ type BlockMetrics struct {
     Timestamp      time.Time
 }
 
-transformFunc := func(ob chainwatch.ObservedBlock) BlockMetrics {
+transformFunc := func(ob chainstream.ObservedBlock) BlockMetrics {
     height, _ := strconv.ParseUint(ob.Height.String(), 0, 64)
     return BlockMetrics{
         Network:          ob.Network,
@@ -413,12 +413,12 @@ transformFunc := func(ob chainwatch.ObservedBlock) BlockMetrics {
 **Filter and Enrich:**
 ```go
 type EnrichedBlock struct {
-    chainwatch.ObservedBlock
+    chainstream.ObservedBlock
     ProcessingLatency time.Duration
     IsHighActivity    bool
 }
 
-transformFunc := func(ob chainwatch.ObservedBlock) *EnrichedBlock {
+transformFunc := func(ob chainstream.ObservedBlock) *EnrichedBlock {
     if len(ob.Transactions) < 10 {
         return nil // Filter out low-activity blocks
     }
