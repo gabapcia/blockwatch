@@ -152,50 +152,56 @@ Below is a detailed Mermaid diagram illustrating the workflow of the chainstream
 
 ```mermaid
 graph TD
-    A[Service Initialization] --> B[Register Blockchain Networks]
-    B --> C[Configure Service Options: Retry, Checkpoint, Error Handling]
-    C --> D[Start Service with Context]
-    D --> E[Check if Service Already Started]
-    E -->|Yes| F[Return Error: Service Already Started]
-    E -->|No| G[Initialize Channels: Dispatch Failure, Retry, Pre-Checkpoint, Output]
-    G --> H[Load Checkpoint for Each Network]
-    H --> I[Subscribe to Blockchain from Checkpoint + 1 or Latest]
-    I --> J[Launch Subscription Event Dispatching per Network]
-    J --> K[Receive Blockchain Events]
-    K -->|Success| L[Wrap Block in ObservedBlock]
-    L --> M[Send to Pre-Checkpoint Channel]
-    K -->|Error| N[Create BlockDispatchFailure with Error Details]
-    N --> O[Send to Error Submission Channel]
-    O --> P{Check if Retry Logic Configured?}
-    P -->|No| Q[Forward to Dispatch Failure Channel]
-    Q --> R[Invoke Dispatch Failure Handler or Log]
-    P -->|Yes| S[Send to Retry Failure Channel]
-    S --> T[Execute Retry Logic to Re-Fetch Block]
-    T -->|Success| U[Send Recovered ObservedBlock to Pre-Checkpoint Channel]
-    T -->|Failure| V[Append Retry Errors to Failure]
-    V --> R
-    M --> W[Enter Checkpoint and Forward Stage]
-    U --> W
-    W --> X[Save Checkpoint for Network and Height]
-    X -->|Success| Y[Transform ObservedBlock to Type T]
-    X -->|Failure| Z[Log Checkpoint Error, Skip Forwarding]
-    Y --> AA[Send Transformed Data to Final Output Channel]
-    AA -->|Success| AB[Consumer Receives Data]
-    AA -->|Context Canceled| AC[Exit Checkpoint Loop]
-    D --> AD[Start Background Goroutines for Error Handling and Retry]
-    AD --> AE[Start Goroutines for Checkpoint Processing]
-    AE --> J
-    D -->|Close Service| AF[Cancel Background Contexts]
-    AF --> AG[Close Internal Channels]
-    AG --> AH[Reset Service State for Reinitialization]
+    subgraph "Service Initialization"
+        A["Service begins execution via Start()"] --> B{"Is the service already running?"};
+        B -- no --> C["Initialize internal channels (finalOut, preCheckpointCh, etc.)"];
+        B -- yes --> D["Return ErrServiceAlreadyStarted error"];
+    end
+
+    subgraph "Network Subscription (for each network)"
+        C --> E["Load latest checkpoint for the network<br/>(checkpointStorage.LoadLatestCheckpoint)"];
+        E --> F["Subscribe to the blockchain client<br/>(blockchain.Subscribe)"];
+        F --> G["Receive a stream of BlockchainEvents<br/>(eventsCh)"];
+    end
+
+    subgraph "Event Dispatching"
+        G --> H["A goroutine processes each event<br/>(dispatchSubscriptionEvents)"];
+        H --> I{"Does the event contain an error?"};
+        I -- no --> J["On success, send ObservedBlock<br/>to preCheckpointCh"];
+        I -- yes --> K["On failure, send BlockDispatchFailure<br/>to errorsCh"];
+    end
+
+    subgraph "Error Handling"
+        K --> L{"Is a retry mechanism configured?"};
+        L -- no --> M["Forward to dispatchFailureCh<br/>for final handling"];
+        L -- yes --> N["Forward to retryFailureCh<br/>for reprocessing"];
+        N --> O["A goroutine attempts to re-fetch the block<br/>(retryFailedBlockFetches)"];
+        O --> P{"Was the block successfully re-fetched?"};
+        P -- yes --> J;
+        P -- no --> M;
+        M --> Q["A goroutine invokes the user's handler<br/>(handleDispatchFailures)"];
+        Q --> R["User-defined dispatchFailureHandler is executed"];
+    end
+
+    subgraph "Final Processing"
+        J --> S["A goroutine processes the block<br/>(checkpointAndForward)"];
+        S --> T["Persist the new block height<br/>(checkpointStorage.SaveCheckpoint)"];
+        T --> U["Transform ObservedBlock to type T<br/>(transformFunc)"];
+        U --> V["Send transformed data to the output channel<br/>(finalOut)"];
+    end
+
+    subgraph "Service Shutdown"
+        W["Service is stopped via Close()"] --> X["Cancel the main context and<br/>close all internal channels"];
+    end
 ```
 
 This diagram provides a detailed overview of the chainstream package workflow:
-- **Initialization and Setup**: The service is initialized, configured with options, and starts with necessary checks and channel setup.
-- **Subscription and Event Processing**: Blockchain subscriptions are established from checkpoints, and events are processed with successful blocks sent for checkpointing and errors routed for handling.
-- **Error Handling and Retry**: Errors are managed with optional retry logic to recover blocks, forwarding unrecoverable failures to a handler.
-- **Checkpointing and Delivery**: Blocks are checkpointed, transformed if needed, and delivered to consumers via the output channel.
-- **Background Operations and Shutdown**: Background goroutines manage processing and error handling, with a clean shutdown process to close channels and reset the service state.
+- **Service Initialization**: The service is started, checks if it's already running, and initializes the necessary channels.
+- **Network Subscription**: For each network, it loads the last checkpoint and subscribes to the blockchain to receive a channel of events.
+- **Event Dispatching**: Events are dispatched based on whether they contain an error. Successful events go to the processing channel, while errors are routed for handling.
+- **Error Handling**: Errors are routed through an optional retry mechanism. If retries fail or are disabled, the error is passed to a user-defined failure handler.
+- **Final Processing**: Successfully fetched blocks are checkpointed, transformed using a custom function, and sent to the final output channel.
+- **Service Shutdown**: The `Close()` method gracefully shuts down all background processes and closes channels.
 
 ## Usage
 
