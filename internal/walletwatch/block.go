@@ -1,4 +1,4 @@
-package txwatcher
+package walletwatch
 
 import "github.com/gabapcia/blockwatch/internal/pkg/types"
 

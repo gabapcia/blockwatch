@@ -7,7 +7,7 @@ package mocks
 import (
 	"context"
 
-	"github.com/gabapcia/blockwatch/internal/txwatcher"
+	"github.com/gabapcia/blockwatch/internal/walletwatch"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -39,7 +39,7 @@ func (_m *Service) EXPECT() *Service_Expecter {
 }
 
 // NotifyWatchedTransactions provides a mock function for the type Service
-func (_mock *Service) NotifyWatchedTransactions(ctx context.Context, block txwatcher.Block) error {
+func (_mock *Service) NotifyWatchedTransactions(ctx context.Context, block walletwatch.Block) error {
 	ret := _mock.Called(ctx, block)
 
 	if len(ret) == 0 {
@@ -47,7 +47,7 @@ func (_mock *Service) NotifyWatchedTransactions(ctx context.Context, block txwat
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, txwatcher.Block) error); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, walletwatch.Block) error); ok {
 		r0 = returnFunc(ctx, block)
 	} else {
 		r0 = ret.Error(0)
@@ -62,20 +62,20 @@ type Service_NotifyWatchedTransactions_Call struct {
 
 // NotifyWatchedTransactions is a helper method to define mock.On call
 //   - ctx context.Context
-//   - block txwatcher.Block
+//   - block walletwatch.Block
 func (_e *Service_Expecter) NotifyWatchedTransactions(ctx interface{}, block interface{}) *Service_NotifyWatchedTransactions_Call {
 	return &Service_NotifyWatchedTransactions_Call{Call: _e.mock.On("NotifyWatchedTransactions", ctx, block)}
 }
 
-func (_c *Service_NotifyWatchedTransactions_Call) Run(run func(ctx context.Context, block txwatcher.Block)) *Service_NotifyWatchedTransactions_Call {
+func (_c *Service_NotifyWatchedTransactions_Call) Run(run func(ctx context.Context, block walletwatch.Block)) *Service_NotifyWatchedTransactions_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 txwatcher.Block
+		var arg1 walletwatch.Block
 		if args[1] != nil {
-			arg1 = args[1].(txwatcher.Block)
+			arg1 = args[1].(walletwatch.Block)
 		}
 		run(
 			arg0,
@@ -90,7 +90,7 @@ func (_c *Service_NotifyWatchedTransactions_Call) Return(err error) *Service_Not
 	return _c
 }
 
-func (_c *Service_NotifyWatchedTransactions_Call) RunAndReturn(run func(ctx context.Context, block txwatcher.Block) error) *Service_NotifyWatchedTransactions_Call {
+func (_c *Service_NotifyWatchedTransactions_Call) RunAndReturn(run func(ctx context.Context, block walletwatch.Block) error) *Service_NotifyWatchedTransactions_Call {
 	_c.Call.Return(run)
 	return _c
 }
