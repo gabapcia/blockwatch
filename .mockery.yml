@@ -24,7 +24,7 @@ packages:
     interfaces:
       Service:
         config: *default-config
-  github.com/gabapcia/blockwatch/internal/txwatcher:
+  github.com/gabapcia/blockwatch/internal/walletwatch:
     config: *in-package-config
     interfaces:
       Service:
