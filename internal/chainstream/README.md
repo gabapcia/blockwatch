@@ -1,10 +1,10 @@
 # ChainStream Package
 
-The `chainstream` package provides a robust, multi-blockchain block streaming service with built-in resilience features and flexible data transformation capabilities. It serves as the core monitoring component within the blockwatch project, designed to observe multiple blockchain networks simultaneously while handling failures gracefully and transforming block data into custom formats.
+The `chainstream` package provides a robust, multi-blockchain block streaming service with built-in resilience features. It serves as the core monitoring component within the blockwatch project, designed to observe multiple blockchain networks simultaneously and handle failures gracefully.
 
 ## Package Overview
 
-ChainStream is a streaming service that subscribes to blockchain networks and emits observed blocks or transformed data through a unified interface. It abstracts away the complexities of network failures, retry logic, checkpoint management, and data transformation, providing a clean stream of blockchain events or custom data structures to consumers.
+ChainStream is a streaming service that subscribes to blockchain networks and emits observed blocks through a unified interface. It abstracts away the complexities of network failures, retry logic, and checkpoint management, providing a clean stream of blockchain events to consumers.
 
 ## Architecture
 
@@ -37,16 +37,14 @@ ChainStream is a streaming service that subscribes to blockchain networks and em
 
 ### Service Interface
 ```go
-type Service[T any] interface {
-    // Start begins the block observation process and returns a channel of observed blocks or transformed data
-    Start(ctx context.Context) (<-chan T, error)
+type Service interface {
+    // Start begins the block observation process and returns a channel of observed blocks
+    Start(ctx context.Context) (<-chan ObservedBlock, error)
     
     // Close terminates all background processes and cleans up resources
     Close()
 }
 ```
-
-The Service interface is generic, allowing you to specify the output type `T`. This enables transformation of raw `ObservedBlock` data into custom formats that better suit your application's needs.
 
 ### Blockchain Interface
 The package depends on implementations of the `Blockchain` interface to provide blockchain data:
@@ -111,16 +109,9 @@ type BlockchainEvent struct {
 ## How It Works
 
 ### 1. Initialization
-The service can be created in two ways:
-
-**Standard Service (ObservedBlock output):**
+The service is created by calling `New`:
 ```go
 service := chainstream.New(networks, options...)
-```
-
-**Service with Custom Transform:**
-```go
-service := chainstream.NewWithTransform(networks, transformFunc, options...)
 ```
 
 ### 2. Block Streaming Process
@@ -128,23 +119,15 @@ service := chainstream.NewWithTransform(networks, transformFunc, options...)
 1. **Checkpoint Recovery**: For each network, load the last processed block height
 2. **Subscription Setup**: Start streaming from the next block after the checkpoint
 3. **Event Processing**: Handle incoming blockchain events:
-   - **Success**: Convert to `ObservedBlock` and proceed to transformation stage
+   - **Success**: Convert to `ObservedBlock` and send for checkpointing
    - **Failure**: Send to retry system (if configured) or failure handler
 4. **Retry Logic**: Attempt to recover failed block fetches
-5. **Checkpoint & Transform**: Save progress for successful blocks, then transform data
-6. **Output Delivery**: Emit transformed data to the output channel
+5. **Checkpointing**: Save progress for successful blocks
+6. **Output Delivery**: Emit the `ObservedBlock` to the output channel
 
-### 3. Data Transformation Pipeline
 
-The service includes a transformation pipeline that processes blocks in this order:
-
-1. **Raw Block Ingestion**: Blocks are received from blockchain subscriptions
-2. **Checkpoint Persistence**: Block progress is saved (if checkpoint storage is configured)
-3. **Data Transformation**: Blocks are transformed using the provided transform function
-4. **Output Delivery**: Transformed data is delivered to consumers
-
-### 4. Output Stream
-The service provides a unified stream of transformed data (type `T`) from all monitored networks.
+### 3. Output Stream
+The service provides a unified stream of `ObservedBlock` data from all monitored networks.
 
 ### 5. Workflow Diagram
 
@@ -186,8 +169,7 @@ graph TD
     subgraph "Final Processing"
         J --> S["A goroutine processes the block<br/>(checkpointAndForward)"];
         S --> T["Persist the new block height<br/>(checkpointStorage.SaveCheckpoint)"];
-        T --> U["Transform ObservedBlock to type T<br/>(transformFunc)"];
-        U --> V["Send transformed data to the output channel<br/>(finalOut)"];
+        T --> V["Send ObservedBlock to the output channel<br/>(finalOut)"];
     end
 
     subgraph "Service Shutdown"
@@ -200,7 +182,7 @@ This diagram provides a detailed overview of the chainstream package workflow:
 - **Network Subscription**: For each network, it loads the last checkpoint and subscribes to the blockchain to receive a channel of events.
 - **Event Dispatching**: Events are dispatched based on whether they contain an error. Successful events go to the processing channel, while errors are routed for handling.
 - **Error Handling**: Errors are routed through an optional retry mechanism. If retries fail or are disabled, the error is passed to a user-defined failure handler.
-- **Final Processing**: Successfully fetched blocks are checkpointed, transformed using a custom function, and sent to the final output channel.
+- **Final Processing**: Successfully fetched blocks are checkpointed and sent to the final output channel.
 - **Service Shutdown**: The `Close()` method gracefully shuts down all background processes and closes channels.
 
 ## Usage
@@ -232,46 +214,6 @@ for block := range blocksCh {
 }
 ```
 
-### Usage with Custom Transform
-
-```go
-// Define a custom output type
-type BlockSummary struct {
-    Network     string
-    Height      string
-    Hash        string
-    TxCount     int
-    ProcessedAt time.Time
-}
-
-// Create transform function
-transformFunc := func(ob chainstream.ObservedBlock) BlockSummary {
-    return BlockSummary{
-        Network:     ob.Network,
-        Height:      ob.Height.String(),
-        Hash:        ob.Hash,
-        TxCount:     len(ob.Transactions),
-        ProcessedAt: time.Now(),
-    }
-}
-
-// Create service with transform
-service := chainstream.NewWithTransform(networks, transformFunc)
-
-// Start monitoring
-ctx := context.Background()
-summariesCh, err := service.Start(ctx)
-if err != nil {
-    return err
-}
-defer service.Close()
-
-// Process transformed data
-for summary := range summariesCh {
-    fmt.Printf("Summary: %s block %s with %d transactions\n", 
-        summary.Network, summary.Height, summary.TxCount)
-}
-```
 
 ### Advanced Configuration
 
@@ -291,12 +233,6 @@ service := chainstream.New(networks,
     }),
 )
 
-// Service with transform and advanced options
-service := chainstream.NewWithTransform(networks, transformFunc,
-    chainstream.WithRetry(retryStrategy),
-    chainstream.WithCheckpointStorage(storage),
-    chainstream.WithDispatchFailureHandler(customFailureHandler),
-)
 ```
 
 ## Configuration Options
@@ -339,11 +275,6 @@ type BlockDispatchFailure struct {
 
 ## Features
 
-### Data Transformation
-- **Generic Output Types**: Transform blocks into any custom data structure
-- **Flexible Processing**: Apply business logic during the transformation stage
-- **Type Safety**: Compile-time type checking for transformed outputs
-- **Pipeline Architecture**: Clean separation between ingestion, checkpointing, and transformation
 
 ### Resilience
 - **Retry Logic**: Configurable retry strategies for transient failures
@@ -360,7 +291,6 @@ type BlockDispatchFailure struct {
 - **Checkpoint System**: Resume from last processed block after restarts
 - **No Data Loss**: Failed blocks are tracked and retried
 - **Context Cancellation**: Proper cancellation handling throughout
-- **Transform Isolation**: Transformation errors don't affect checkpointing
 
 ## Thread Safety
 
@@ -379,60 +309,6 @@ The package has minimal external dependencies:
 
 ## Integration
 
-This package is designed to be used within the larger blockwatch project as the core blockchain monitoring component. It provides a clean abstraction over multiple blockchain networks while handling the complexities of network failures, state management, and data transformation.
+This package is designed to be used within the larger blockwatch project as the core blockchain monitoring component. It provides a clean abstraction over multiple blockchain networks while handling the complexities of network failures and state management.
 
 The package expects blockchain implementations to be provided by other components in the project (e.g., `internal/infra/blockchain/ethereum`) and can optionally integrate with storage backends for checkpoint persistence.
-
-### Transform Function Examples
-
-**Extract Transaction Hashes:**
-```go
-transformFunc := func(ob chainstream.ObservedBlock) []string {
-    hashes := make([]string, len(ob.Transactions))
-    for i, tx := range ob.Transactions {
-        hashes[i] = tx.Hash
-    }
-    return hashes
-}
-```
-
-**Create Metrics:**
-```go
-type BlockMetrics struct {
-    Network        string
-    Height         uint64
-    TransactionCount int
-    Timestamp      time.Time
-}
-
-transformFunc := func(ob chainstream.ObservedBlock) BlockMetrics {
-    height, _ := strconv.ParseUint(ob.Height.String(), 0, 64)
-    return BlockMetrics{
-        Network:          ob.Network,
-        Height:           height,
-        TransactionCount: len(ob.Transactions),
-        Timestamp:        time.Now(),
-    }
-}
-```
-
-**Filter and Enrich:**
-```go
-type EnrichedBlock struct {
-    chainstream.ObservedBlock
-    ProcessingLatency time.Duration
-    IsHighActivity    bool
-}
-
-transformFunc := func(ob chainstream.ObservedBlock) *EnrichedBlock {
-    if len(ob.Transactions) < 10 {
-        return nil // Filter out low-activity blocks
-    }
-    
-    return &EnrichedBlock{
-        ObservedBlock:     ob,
-        ProcessingLatency: time.Since(startTime),
-        IsHighActivity:    len(ob.Transactions) > 100,
-    }
-}
-```
