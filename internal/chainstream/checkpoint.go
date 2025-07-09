@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 
+	"github.com/gabapcia/blockwatch/internal/pkg/flow/chflow"
 	"github.com/gabapcia/blockwatch/internal/pkg/logger"
 	"github.com/gabapcia/blockwatch/internal/pkg/types"
-	"github.com/gabapcia/blockwatch/internal/pkg/x/chflow"
 )
 
 // ErrNoCheckpointFound is returned by LoadLatestCheckpoint when no checkpoint

@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
+	"github.com/gabapcia/blockwatch/internal/pkg/flow/chflow"
 	"github.com/gabapcia/blockwatch/internal/pkg/types"
-	"github.com/gabapcia/blockwatch/internal/pkg/x/chflow"
 )
 
 // ErrNetworkNotRegistered is returned when attempting to operate on an unregistered network.
