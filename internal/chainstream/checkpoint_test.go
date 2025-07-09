@@ -2,13 +2,573 @@ package chainstream
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
+	"github.com/gabapcia/blockwatch/internal/pkg/logger"
 	"github.com/gabapcia/blockwatch/internal/pkg/types"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func init() {
+	// Initialize logger for tests to prevent nil pointer dereference
+	_ = logger.Init("error")
+}
+
+func TestService_checkpointAndForward(t *testing.T) {
+	t.Run("successfully forwards blocks and saves checkpoints", func(t *testing.T) {
+		// Setup
+		mockStorage := NewCheckpointStorageMock(t)
+		svc := &service{
+			checkpointStorage: mockStorage,
+		}
+
+		ctx := t.Context()
+		blockIn := make(chan ObservedBlock, 3)
+		blockOut := make(chan ObservedBlock, 3)
+
+		// Test data
+		blocks := []ObservedBlock{
+			{
+				Network: "ethereum",
+				Block: Block{
+					Height: types.Hex("0x100"),
+					Hash:   "hash1",
+					Transactions: []Transaction{
+						{Hash: "tx1", From: "addr1", To: "addr2"},
+					},
+				},
+			},
+			{
+				Network: "polygon",
+				Block: Block{
+					Height: types.Hex("0x200"),
+					Hash:   "hash2",
+					Transactions: []Transaction{
+						{Hash: "tx2", From: "addr3", To: "addr4"},
+					},
+				},
+			},
+			{
+				Network: "ethereum",
+				Block: Block{
+					Height:       types.Hex("0x101"),
+					Hash:         "hash3",
+					Transactions: []Transaction{},
+				},
+			},
+		}
+
+		// Setup expectations
+		for _, block := range blocks {
+			mockStorage.EXPECT().SaveCheckpoint(ctx, block.Network, block.Height).Return(nil).Once()
+		}
+
+		// Send test blocks
+		for _, block := range blocks {
+			blockIn <- block
+		}
+		close(blockIn)
+
+		// Start the function under test
+		go svc.checkpointAndForward(ctx, blockIn, blockOut)
+
+		// Collect results
+		var results []ObservedBlock
+		for i := 0; i < len(blocks); i++ {
+			select {
+			case block := <-blockOut:
+				results = append(results, block)
+			case <-time.After(100 * time.Millisecond):
+				t.Fatal("Timeout waiting for block")
+			}
+		}
+
+		// Verify results
+		assert.Equal(t, blocks, results)
+	})
+
+	t.Run("continues processing when checkpoint save fails", func(t *testing.T) {
+		// Setup
+		mockStorage := NewCheckpointStorageMock(t)
+		svc := &service{
+			checkpointStorage: mockStorage,
+		}
+
+		ctx := t.Context()
+		blockIn := make(chan ObservedBlock, 2)
+		blockOut := make(chan ObservedBlock, 2)
+
+		// Test data
+		blocks := []ObservedBlock{
+			{
+				Network: "ethereum",
+				Block: Block{
+					Height: types.Hex("0x100"),
+					Hash:   "hash1",
+				},
+			},
+			{
+				Network: "ethereum",
+				Block: Block{
+					Height: types.Hex("0x101"),
+					Hash:   "hash2",
+				},
+			},
+		}
+
+		// Setup expectations - first save fails, second succeeds
+		checkpointError := errors.New("checkpoint storage error")
+		mockStorage.EXPECT().SaveCheckpoint(ctx, blocks[0].Network, blocks[0].Height).Return(checkpointError).Once()
+		mockStorage.EXPECT().SaveCheckpoint(ctx, blocks[1].Network, blocks[1].Height).Return(nil).Once()
+
+		// Send test blocks
+		for _, block := range blocks {
+			blockIn <- block
+		}
+		close(blockIn)
+
+		// Start the function under test
+		go svc.checkpointAndForward(ctx, blockIn, blockOut)
+
+		// Collect results
+		var results []ObservedBlock
+		for i := 0; i < len(blocks); i++ {
+			select {
+			case block := <-blockOut:
+				results = append(results, block)
+			case <-time.After(100 * time.Millisecond):
+				t.Fatal("Timeout waiting for block")
+			}
+		}
+
+		// Verify both blocks were forwarded despite checkpoint failure
+		assert.Equal(t, blocks, results)
+	})
+
+	t.Run("exits when input channel is closed", func(t *testing.T) {
+		// Setup
+		mockStorage := NewCheckpointStorageMock(t)
+		svc := &service{
+			checkpointStorage: mockStorage,
+		}
+
+		ctx := t.Context()
+		blockIn := make(chan ObservedBlock)
+		blockOut := make(chan ObservedBlock, 1)
+
+		// Close input channel immediately
+		close(blockIn)
+
+		// Start the function under test
+		done := make(chan struct{})
+		go func() {
+			svc.checkpointAndForward(ctx, blockIn, blockOut)
+			close(done)
+		}()
+
+		// Function should exit quickly
+		select {
+		case <-done:
+			// Expected - function should exit when input channel is closed
+		case <-time.After(100 * time.Millisecond):
+			t.Fatal("Function should exit when input channel is closed")
+		}
+
+		// Verify no blocks were sent to output
+		select {
+		case <-blockOut:
+			t.Fatal("No blocks should be sent when input channel is closed immediately")
+		default:
+			// Expected - no blocks should be sent
+		}
+	})
+
+	t.Run("exits when context is canceled", func(t *testing.T) {
+		// Setup
+		mockStorage := NewCheckpointStorageMock(t)
+		svc := &service{
+			checkpointStorage: mockStorage,
+		}
+
+		ctx, cancel := context.WithCancel(t.Context())
+		blockIn := make(chan ObservedBlock)
+		blockOut := make(chan ObservedBlock, 1)
+
+		// Start the function under test
+		done := make(chan struct{})
+		go func() {
+			svc.checkpointAndForward(ctx, blockIn, blockOut)
+			close(done)
+		}()
+
+		// Cancel context
+		cancel()
+
+		// Function should exit quickly
+		select {
+		case <-done:
+			// Expected - function should exit when context is canceled
+		case <-time.After(100 * time.Millisecond):
+			t.Fatal("Function should exit when context is canceled")
+		}
+	})
+
+	t.Run("exits when output channel send fails due to context cancellation", func(t *testing.T) {
+		// Setup
+		mockStorage := NewCheckpointStorageMock(t)
+		svc := &service{
+			checkpointStorage: mockStorage,
+		}
+
+		ctx, cancel := context.WithCancel(t.Context())
+		blockIn := make(chan ObservedBlock, 1)
+		blockOut := make(chan ObservedBlock) // No buffer - will block
+
+		// Test data
+		block := ObservedBlock{
+			Network: "ethereum",
+			Block: Block{
+				Height: types.Hex("0x100"),
+				Hash:   "hash1",
+			},
+		}
+
+		// Setup expectation
+		mockStorage.EXPECT().SaveCheckpoint(ctx, block.Network, block.Height).Return(nil).Once()
+
+		// Send test block
+		blockIn <- block
+
+		// Start the function under test
+		done := make(chan struct{})
+		go func() {
+			svc.checkpointAndForward(ctx, blockIn, blockOut)
+			close(done)
+		}()
+
+		// Give some time for checkpoint to be saved and send to be attempted
+		time.Sleep(10 * time.Millisecond)
+
+		// Cancel context while send is blocked
+		cancel()
+
+		// Function should exit
+		select {
+		case <-done:
+			// Expected - function should exit when send fails due to context cancellation
+		case <-time.After(100 * time.Millisecond):
+			t.Fatal("Function should exit when send fails due to context cancellation")
+		}
+	})
+
+	t.Run("handles multiple networks correctly", func(t *testing.T) {
+		// Setup
+		mockStorage := NewCheckpointStorageMock(t)
+		svc := &service{
+			checkpointStorage: mockStorage,
+		}
+
+		ctx := t.Context()
+		blockIn := make(chan ObservedBlock, 4)
+		blockOut := make(chan ObservedBlock, 4)
+
+		// Test data with different networks
+		blocks := []ObservedBlock{
+			{Network: "ethereum", Block: Block{Height: types.Hex("0x100"), Hash: "eth1"}},
+			{Network: "polygon", Block: Block{Height: types.Hex("0x200"), Hash: "poly1"}},
+			{Network: "arbitrum", Block: Block{Height: types.Hex("0x300"), Hash: "arb1"}},
+			{Network: "ethereum", Block: Block{Height: types.Hex("0x101"), Hash: "eth2"}},
+		}
+
+		// Setup expectations
+		for _, block := range blocks {
+			mockStorage.EXPECT().SaveCheckpoint(ctx, block.Network, block.Height).Return(nil).Once()
+		}
+
+		// Send test blocks
+		for _, block := range blocks {
+			blockIn <- block
+		}
+		close(blockIn)
+
+		// Start the function under test
+		go svc.checkpointAndForward(ctx, blockIn, blockOut)
+
+		// Collect results
+		var results []ObservedBlock
+		for i := 0; i < len(blocks); i++ {
+			select {
+			case block := <-blockOut:
+				results = append(results, block)
+			case <-time.After(100 * time.Millisecond):
+				t.Fatal("Timeout waiting for block")
+			}
+		}
+
+		// Verify all blocks were processed correctly
+		assert.Equal(t, blocks, results)
+	})
+
+	t.Run("handles empty blocks correctly", func(t *testing.T) {
+		// Setup
+		mockStorage := NewCheckpointStorageMock(t)
+		svc := &service{
+			checkpointStorage: mockStorage,
+		}
+
+		ctx := t.Context()
+		blockIn := make(chan ObservedBlock, 1)
+		blockOut := make(chan ObservedBlock, 1)
+
+		// Test data with empty block
+		block := ObservedBlock{
+			Network: "ethereum",
+			Block: Block{
+				Height:       types.Hex("0x100"),
+				Hash:         "hash1",
+				Transactions: []Transaction{}, // Empty transactions
+			},
+		}
+
+		// Setup expectation
+		mockStorage.EXPECT().SaveCheckpoint(ctx, block.Network, block.Height).Return(nil).Once()
+
+		// Send test block
+		blockIn <- block
+		close(blockIn)
+
+		// Start the function under test
+		go svc.checkpointAndForward(ctx, blockIn, blockOut)
+
+		// Collect result
+		select {
+		case result := <-blockOut:
+			assert.Equal(t, block, result)
+		case <-time.After(100 * time.Millisecond):
+			t.Fatal("Timeout waiting for block")
+		}
+	})
+
+	t.Run("handles blocks with zero height", func(t *testing.T) {
+		// Setup
+		mockStorage := NewCheckpointStorageMock(t)
+		svc := &service{
+			checkpointStorage: mockStorage,
+		}
+
+		ctx := t.Context()
+		blockIn := make(chan ObservedBlock, 1)
+		blockOut := make(chan ObservedBlock, 1)
+
+		// Test data with zero height
+		block := ObservedBlock{
+			Network: "ethereum",
+			Block: Block{
+				Height: types.Hex("0x0"),
+				Hash:   "genesis",
+			},
+		}
+
+		// Setup expectation
+		mockStorage.EXPECT().SaveCheckpoint(ctx, block.Network, block.Height).Return(nil).Once()
+
+		// Send test block
+		blockIn <- block
+		close(blockIn)
+
+		// Start the function under test
+		go svc.checkpointAndForward(ctx, blockIn, blockOut)
+
+		// Collect result
+		select {
+		case result := <-blockOut:
+			assert.Equal(t, block, result)
+		case <-time.After(100 * time.Millisecond):
+			t.Fatal("Timeout waiting for block")
+		}
+	})
+
+	t.Run("handles concurrent checkpoint saves safely", func(t *testing.T) {
+		// Setup
+		mockStorage := NewCheckpointStorageMock(t)
+		svc := &service{
+			checkpointStorage: mockStorage,
+		}
+
+		ctx := t.Context()
+		blockIn := make(chan ObservedBlock, 10)
+		blockOut := make(chan ObservedBlock, 10)
+
+		// Test data - multiple blocks for the same network
+		blocks := make([]ObservedBlock, 10)
+		for i := 0; i < 10; i++ {
+			blocks[i] = ObservedBlock{
+				Network: "ethereum",
+				Block: Block{
+					Height: types.Hex("0x" + string(rune('0'+i))),
+					Hash:   "hash" + string(rune('0'+i)),
+				},
+			}
+		}
+
+		// Setup expectations - each block should have its checkpoint saved
+		for _, block := range blocks {
+			mockStorage.EXPECT().SaveCheckpoint(ctx, block.Network, block.Height).Return(nil).Once()
+		}
+
+		// Send all blocks
+		for _, block := range blocks {
+			blockIn <- block
+		}
+		close(blockIn)
+
+		// Start the function under test
+		go svc.checkpointAndForward(ctx, blockIn, blockOut)
+
+		// Collect all results
+		var results []ObservedBlock
+		for i := 0; i < len(blocks); i++ {
+			select {
+			case block := <-blockOut:
+				results = append(results, block)
+			case <-time.After(200 * time.Millisecond):
+				t.Fatalf("Timeout waiting for block %d", i)
+			}
+		}
+
+		// Verify all blocks were processed
+		assert.Equal(t, blocks, results)
+	})
+}
+
+func TestService_startCheckpointAndForward(t *testing.T) {
+	t.Run("starts checkpointAndForward in goroutine", func(t *testing.T) {
+		// Setup
+		mockStorage := NewCheckpointStorageMock(t)
+		svc := &service{
+			checkpointStorage: mockStorage,
+		}
+
+		ctx := t.Context()
+		blockIn := make(chan ObservedBlock, 1)
+		blockOut := make(chan ObservedBlock, 1)
+
+		// Test data
+		block := ObservedBlock{
+			Network: "ethereum",
+			Block: Block{
+				Height: types.Hex("0x100"),
+				Hash:   "hash1",
+			},
+		}
+
+		// Setup expectation
+		mockStorage.EXPECT().SaveCheckpoint(ctx, block.Network, block.Height).Return(nil).Once()
+
+		// Start the function under test (should return immediately)
+		start := time.Now()
+		svc.startCheckpointAndForward(ctx, blockIn, blockOut)
+		duration := time.Since(start)
+
+		// Function should return immediately (within a reasonable time)
+		assert.Less(t, duration, 10*time.Millisecond, "startCheckpointAndForward should return immediately")
+
+		// Send test block
+		blockIn <- block
+		close(blockIn)
+
+		// Verify processing happens in background
+		select {
+		case result := <-blockOut:
+			assert.Equal(t, block, result)
+		case <-time.After(100 * time.Millisecond):
+			t.Fatal("Background processing should handle the block")
+		}
+	})
+
+	t.Run("multiple calls create independent goroutines", func(t *testing.T) {
+		// Setup
+		mockStorage := NewCheckpointStorageMock(t)
+		svc := &service{
+			checkpointStorage: mockStorage,
+		}
+
+		ctx := t.Context()
+
+		// Create multiple independent channels
+		blockIn1 := make(chan ObservedBlock, 1)
+		blockOut1 := make(chan ObservedBlock, 1)
+		blockIn2 := make(chan ObservedBlock, 1)
+		blockOut2 := make(chan ObservedBlock, 1)
+
+		// Test data
+		block1 := ObservedBlock{Network: "ethereum", Block: Block{Height: types.Hex("0x100"), Hash: "hash1"}}
+		block2 := ObservedBlock{Network: "polygon", Block: Block{Height: types.Hex("0x200"), Hash: "hash2"}}
+
+		// Setup expectations
+		mockStorage.EXPECT().SaveCheckpoint(ctx, block1.Network, block1.Height).Return(nil).Once()
+		mockStorage.EXPECT().SaveCheckpoint(ctx, block2.Network, block2.Height).Return(nil).Once()
+
+		// Start multiple independent processors
+		svc.startCheckpointAndForward(ctx, blockIn1, blockOut1)
+		svc.startCheckpointAndForward(ctx, blockIn2, blockOut2)
+
+		// Send blocks to different processors
+		blockIn1 <- block1
+		blockIn2 <- block2
+		close(blockIn1)
+		close(blockIn2)
+
+		// Verify both processors work independently
+		var results []ObservedBlock
+
+		select {
+		case result := <-blockOut1:
+			results = append(results, result)
+		case <-time.After(100 * time.Millisecond):
+			t.Fatal("First processor should handle its block")
+		}
+
+		select {
+		case result := <-blockOut2:
+			results = append(results, result)
+		case <-time.After(100 * time.Millisecond):
+			t.Fatal("Second processor should handle its block")
+		}
+
+		// Verify both blocks were processed
+		assert.Contains(t, results, block1)
+		assert.Contains(t, results, block2)
+		assert.Len(t, results, 2)
+	})
+
+	t.Run("function returns immediately", func(t *testing.T) {
+		// Setup
+		mockStorage := NewCheckpointStorageMock(t)
+		svc := &service{
+			checkpointStorage: mockStorage,
+		}
+
+		ctx := t.Context()
+		blockIn := make(chan ObservedBlock)
+		blockOut := make(chan ObservedBlock)
+
+		// Measure execution time
+		start := time.Now()
+		svc.startCheckpointAndForward(ctx, blockIn, blockOut)
+		duration := time.Since(start)
+
+		// Should return almost immediately
+		assert.Less(t, duration, 5*time.Millisecond, "startCheckpointAndForward should return immediately")
+
+		// Clean up
+		close(blockIn)
+	})
+}
 
 func TestNopCheckpoint_SaveCheckpoint(t *testing.T) {
 	t.Run("saves checkpoint successfully without error", func(t *testing.T) {

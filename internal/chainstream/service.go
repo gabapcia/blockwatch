@@ -62,69 +62,6 @@ type service struct {
 // Compile-time check to ensure *service implements the Service interface.
 var _ Service = new(service)
 
-// checkpointAndForward ensures checkpoint persistence for each received ObservedBlock
-// before forwarding it directly to the output channel.
-//
-// It continuously reads from blockIn until the channel is closed or the context is canceled.
-// For each block received:
-//  1. A checkpoint is attempted using the configured CheckpointStorage.
-//  2. If the checkpoint save fails, the error is logged, but the block is still processed.
-//  3. The block is forwarded directly to the blockOut channel.
-//
-// Failures to persist the checkpoint do not interrupt processing — the system logs the failure
-// and continues to forward the block.
-//
-// This function exits cleanly when:
-//   - The input channel is closed,
-//   - The context is canceled, or
-//   - Sending to blockOut fails due to context cancellation.
-//
-// The output channel is not closed by this function — the caller is responsible for managing its lifecycle.
-func (s *service) checkpointAndForward(ctx context.Context, blockIn <-chan ObservedBlock, blockOut chan<- ObservedBlock) {
-	for {
-		observedBlock, ok := chflow.Receive(ctx, blockIn)
-		if !ok {
-			return
-		}
-
-		// Save checkpoint before forwarding the block
-		if err := s.checkpointStorage.SaveCheckpoint(ctx, observedBlock.Network, observedBlock.Height); err != nil {
-			// Log the error but continue processing - checkpoint failure shouldn't stop block processing
-			logger.Error(ctx, "failed to save checkpoint",
-				"block.network", observedBlock.Network,
-				"block.height", observedBlock.Height,
-				"error", err,
-			)
-		}
-
-		// Forward the transformed output to the final output channel
-		if ok := chflow.Send(ctx, blockOut, observedBlock); !ok {
-			return
-		}
-	}
-}
-
-// startCheckpointAndForward starts the checkpointAndForward function in a new goroutine,
-// allowing asynchronous processing of ObservedBlock values.
-//
-// This stage sits between internal block ingestion and final delivery to clients.
-// It ensures that checkpoints are persisted for each block before forwarding it.
-//
-// Parameters:
-//   - ctx: controls cancellation of the processing goroutine.
-//   - blockIn: channel from which raw ObservedBlocks are consumed.
-//   - blockOut: channel to which ObservedBlock values are sent.
-//
-// This function returns immediately and does not block the caller.
-// The processing loop will continue running in the background until:
-//   - The context is canceled, or
-//   - The input channel is closed.
-//
-// It is the caller's responsibility to close `blockIn` and `blockOut` at the appropriate time.
-func (s *service) startCheckpointAndForward(ctx context.Context, blockIn <-chan ObservedBlock, blockOut chan<- ObservedBlock) {
-	go s.checkpointAndForward(ctx, blockIn, blockOut)
-}
-
 // Start initializes all subscriptions for registered networks,
 // starts retry and dispatch failure handlers, and returns a channel of transformed data.
 //
