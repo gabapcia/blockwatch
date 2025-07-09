@@ -11,8 +11,6 @@ import (
 )
 
 func TestBuildWalletIdentifier(t *testing.T) {
-	validator.Init()
-
 	t.Run("should build and validate a correct identifier", func(t *testing.T) {
 		id, err := buildWalletIdentifier("ethereum", "0x123")
 		require.NoError(t, err)
@@ -23,19 +21,17 @@ func TestBuildWalletIdentifier(t *testing.T) {
 	t.Run("should return a validation error if network is missing", func(t *testing.T) {
 		_, err := buildWalletIdentifier("", "0x123")
 		require.Error(t, err)
-		assert.ErrorIs(t, err, validator.ErrValidation)
+		assert.ErrorIs(t, err, validator.ErrValidationFailed)
 	})
 
 	t.Run("should return a validation error if address is missing", func(t *testing.T) {
 		_, err := buildWalletIdentifier("ethereum", "")
 		require.Error(t, err)
-		assert.ErrorIs(t, err, validator.ErrValidation)
+		assert.ErrorIs(t, err, validator.ErrValidationFailed)
 	})
 }
 
 func TestService_StartWatching(t *testing.T) {
-	validator.Init()
-
 	t.Run("should register a wallet for monitoring", func(t *testing.T) {
 		ctx := t.Context()
 		storage := NewWalletStorageMock(t)
@@ -58,7 +54,7 @@ func TestService_StartWatching(t *testing.T) {
 
 		err := s.StartWatching(ctx, "", "0x123")
 		require.Error(t, err)
-		assert.ErrorIs(t, err, validator.ErrValidation)
+		assert.ErrorIs(t, err, validator.ErrValidationFailed)
 	})
 
 	t.Run("should return an error if wallet storage fails", func(t *testing.T) {
@@ -98,8 +94,6 @@ func TestService_StartWatching(t *testing.T) {
 }
 
 func TestService_StopWatching(t *testing.T) {
-	validator.Init()
-
 	t.Run("should unregister a wallet from monitoring", func(t *testing.T) {
 		ctx := t.Context()
 		storage := NewWalletStorageMock(t)
@@ -122,7 +116,7 @@ func TestService_StopWatching(t *testing.T) {
 
 		err := s.StopWatching(ctx, "ethereum", "")
 		require.Error(t, err)
-		assert.ErrorIs(t, err, validator.ErrValidation)
+		assert.ErrorIs(t, err, validator.ErrValidationFailed)
 	})
 
 	t.Run("should return an error if wallet storage fails", func(t *testing.T) {

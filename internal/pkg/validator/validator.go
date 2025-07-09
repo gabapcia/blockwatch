@@ -1,57 +1,56 @@
-// Package validator provides a wrapper around the go-playground/validator library,
-// adding support for thread-safe initialization and standardized error formatting.
+// Package validator provides a thin wrapper around the go-playground/validator library,
+// enabling declarative struct validation with standardized error formatting.
 //
-// It allows for validating structs using tags and returning consistent errors
-// that can be logged or returned to clients.
+// It supports validating struct fields using tags (e.g., `validate:"required"`) and returns
+// descriptive error messages when validation rules are violated. This package is initialized
+// automatically and safe to use directly.
 package validator
 
 import (
 	"errors"
 	"fmt"
-	"sync"
 
 	gvalidator "github.com/go-playground/validator/v10"
 )
 
-// validator is a singleton instance of the go-playground validator.
-var (
-	validator         *gvalidator.Validate
-	initValidatorOnce sync.Once
-)
+// ErrValidationFailed is returned as the first error in a multi-error chain when validation fails.
+//
+// This sentinel error allows callers to detect validation failures explicitly,
+// even when multiple field errors are returned.
+var ErrValidationFailed = errors.New("struct validation failed")
 
-// ErrValidation is returned as the first error when validation fails.
-// It acts as a high-level indicator that one or more validation rules were violated.
-var ErrValidation = errors.New("validation error")
+// validator is a singleton instance of the go-playground validator,
+// initialized automatically on package load.
+var validator *gvalidator.Validate
 
-// errStringFormat defines the format for individual validation error messages.
+// errStringFormat defines the template used to describe individual validation errors.
+//
+// Example: "'Address': value '0x' does not meet the requirements for the 'required' validation"
 const errStringFormat = "'%s': value '%v' does not meet the requirements for the '%s' validation"
 
-// Init initializes the validator only once, enabling required field validation on structs.
+// init initializes the singleton validator instance automatically on package import.
 //
-// It is safe to call Init multiple times; only the first call will take effect.
-func Init() {
-	initValidatorOnce.Do(func() {
-		validator = gvalidator.New(gvalidator.WithRequiredStructEnabled())
-	})
+// It enables validation for required fields in structs using tags like `validate:"required"`.
+func init() {
+	validator = gvalidator.New(gvalidator.WithRequiredStructEnabled())
 }
 
-// formatError takes a validator error and transforms it into a detailed, multi-error
-// chain with human-readable messages. The first error in the chain is always ErrValidation.
+// formatError transforms a raw validator error into a structured, human-readable multi-error chain.
 //
-// Each field error is formatted using errStringFormat.
+// If the input is a set of validation errors, it returns a combined error with ErrValidationFailed as the root,
+// followed by a formatted message for each field error. Otherwise, the original error is returned unchanged.
 func formatError(err error) error {
 	var validationErrors gvalidator.ValidationErrors
 	if !errors.As(err, &validationErrors) {
 		return err
 	}
 
-	errs := []error{ErrValidation}
+	errs := []error{ErrValidationFailed}
 	for _, validationErr := range validationErrors {
-		var (
-			field = validationErr.Field()
-			tag   = validationErr.Tag()
-			value = validationErr.Value()
-			err   = fmt.Errorf(errStringFormat, field, value, tag)
+		err := fmt.Errorf(errStringFormat,
+			validationErr.Field(),
+			validationErr.Value(),
+			validationErr.Tag(),
 		)
 
 		errs = append(errs, err)
@@ -60,10 +59,20 @@ func formatError(err error) error {
 	return errors.Join(errs...)
 }
 
-// Validate validates a struct using the singleton validator instance.
+// Validate checks if the given struct satisfies its validation tags.
 //
-// It returns nil if the struct passes validation, or an error containing all violations
-// if validation fails. You must call Init() before using this function.
+// It returns nil if all fields pass validation. Otherwise, it returns a combined error that includes
+// ErrValidationFailed and one formatted message for each field that failed validation.
+//
+// Example usage:
+//
+//	type Input struct {
+//	    Name string `validate:"required"`
+//	}
+//
+//	if err := validator.Validate(input); errors.Is(err, validator.ErrValidationFailed) {
+//	    // Handle validation failure
+//	}
 func Validate(v any) error {
 	if err := validator.Struct(v); err != nil {
 		return formatError(err)
