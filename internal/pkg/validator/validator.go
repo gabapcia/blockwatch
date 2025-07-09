@@ -1,9 +1,9 @@
-// Package validatior provides a wrapper around the go-playground/validator library,
+// Package validator provides a wrapper around the go-playground/validator library,
 // adding support for thread-safe initialization and standardized error formatting.
 //
 // It allows for validating structs using tags and returning consistent errors
 // that can be logged or returned to clients.
-package validatior
+package validator
 
 import (
 	"errors"
