@@ -29,3 +29,8 @@ packages:
     interfaces:
       Service:
         config: *default-config
+  github.com/gabapcia/blockwatch/internal/walletregistry:
+    config: *in-package-config
+    interfaces:
+      Service:
+        config: *default-config
