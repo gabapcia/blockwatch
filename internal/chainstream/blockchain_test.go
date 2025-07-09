@@ -1688,6 +1688,58 @@ func TestService_dispatchSubscriptionEvents(t *testing.T) {
 			// Expected - no error should be sent
 		}
 	})
+
+	t.Run("returns when chflow.Send to blocksCh fails", func(t *testing.T) {
+		// Create service
+		svc := &service{}
+
+		// Create channels
+		eventsCh := make(chan BlockchainEvent, 1)
+		blocksCh := make(chan ObservedBlock) // No buffer to simulate blocking
+		errorsCh := make(chan BlockDispatchFailure, 1)
+
+		// Create context that will be canceled
+		ctx, cancel := context.WithCancel(t.Context())
+
+		// Start consuming subscription
+		done := make(chan struct{})
+		go func() {
+			svc.dispatchSubscriptionEvents(ctx, "ethereum", eventsCh, blocksCh, errorsCh)
+			close(done)
+		}()
+
+		// Send a successful event that will trigger the chflow.Send to blocksCh
+		eventsCh <- BlockchainEvent{
+			Height: types.Hex("0x700"),
+			Block: Block{
+				Height: types.Hex("0x700"),
+				Hash:   "hash700",
+			},
+			Err: nil,
+		}
+
+		// Give a small delay to ensure the success event is processed and chflow.Send is attempted
+		time.Sleep(10 * time.Millisecond)
+
+		// Cancel context to make chflow.Send return false
+		cancel()
+
+		// Function should return due to chflow.Send returning false
+		select {
+		case <-done:
+			// Expected - function should return when chflow.Send returns false
+		case <-time.After(1 * time.Second):
+			t.Fatal("Function should return when chflow.Send to blocksCh returns false")
+		}
+
+		// Verify no block was sent to blocksCh (because chflow.Send returned false)
+		select {
+		case <-blocksCh:
+			t.Fatal("Expected no block to be sent when chflow.Send returns false")
+		default:
+			// Expected - no block should be sent
+		}
+	})
 }
 
 func TestService_launchAllNetworkSubscriptions(t *testing.T) {
