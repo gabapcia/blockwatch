@@ -37,48 +37,48 @@ func (_m *WalletStorageMock) EXPECT() *WalletStorageMock_Expecter {
 	return &WalletStorageMock_Expecter{mock: &_m.Mock}
 }
 
-// GetTransactionsByWallet provides a mock function for the type WalletStorageMock
-func (_mock *WalletStorageMock) GetTransactionsByWallet(ctx context.Context, network string, txs []Transaction) (map[string][]Transaction, error) {
-	ret := _mock.Called(ctx, network, txs)
+// FilterWatchedWallets provides a mock function for the type WalletStorageMock
+func (_mock *WalletStorageMock) FilterWatchedWallets(ctx context.Context, network string, addresses []string) ([]string, error) {
+	ret := _mock.Called(ctx, network, addresses)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetTransactionsByWallet")
+		panic("no return value specified for FilterWatchedWallets")
 	}
 
-	var r0 map[string][]Transaction
+	var r0 []string
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []Transaction) (map[string][]Transaction, error)); ok {
-		return returnFunc(ctx, network, txs)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string) ([]string, error)); ok {
+		return returnFunc(ctx, network, addresses)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []Transaction) map[string][]Transaction); ok {
-		r0 = returnFunc(ctx, network, txs)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string) []string); ok {
+		r0 = returnFunc(ctx, network, addresses)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(map[string][]Transaction)
+			r0 = ret.Get(0).([]string)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, []Transaction) error); ok {
-		r1 = returnFunc(ctx, network, txs)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, []string) error); ok {
+		r1 = returnFunc(ctx, network, addresses)
 	} else {
 		r1 = ret.Error(1)
 	}
 	return r0, r1
 }
 
-// WalletStorageMock_GetTransactionsByWallet_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetTransactionsByWallet'
-type WalletStorageMock_GetTransactionsByWallet_Call struct {
+// WalletStorageMock_FilterWatchedWallets_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FilterWatchedWallets'
+type WalletStorageMock_FilterWatchedWallets_Call struct {
 	*mock.Call
 }
 
-// GetTransactionsByWallet is a helper method to define mock.On call
+// FilterWatchedWallets is a helper method to define mock.On call
 //   - ctx context.Context
 //   - network string
-//   - txs []Transaction
-func (_e *WalletStorageMock_Expecter) GetTransactionsByWallet(ctx interface{}, network interface{}, txs interface{}) *WalletStorageMock_GetTransactionsByWallet_Call {
-	return &WalletStorageMock_GetTransactionsByWallet_Call{Call: _e.mock.On("GetTransactionsByWallet", ctx, network, txs)}
+//   - addresses []string
+func (_e *WalletStorageMock_Expecter) FilterWatchedWallets(ctx interface{}, network interface{}, addresses interface{}) *WalletStorageMock_FilterWatchedWallets_Call {
+	return &WalletStorageMock_FilterWatchedWallets_Call{Call: _e.mock.On("FilterWatchedWallets", ctx, network, addresses)}
 }
 
-func (_c *WalletStorageMock_GetTransactionsByWallet_Call) Run(run func(ctx context.Context, network string, txs []Transaction)) *WalletStorageMock_GetTransactionsByWallet_Call {
+func (_c *WalletStorageMock_FilterWatchedWallets_Call) Run(run func(ctx context.Context, network string, addresses []string)) *WalletStorageMock_FilterWatchedWallets_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -88,9 +88,9 @@ func (_c *WalletStorageMock_GetTransactionsByWallet_Call) Run(run func(ctx conte
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 []Transaction
+		var arg2 []string
 		if args[2] != nil {
-			arg2 = args[2].([]Transaction)
+			arg2 = args[2].([]string)
 		}
 		run(
 			arg0,
@@ -101,12 +101,12 @@ func (_c *WalletStorageMock_GetTransactionsByWallet_Call) Run(run func(ctx conte
 	return _c
 }
 
-func (_c *WalletStorageMock_GetTransactionsByWallet_Call) Return(stringToTransactions map[string][]Transaction, err error) *WalletStorageMock_GetTransactionsByWallet_Call {
-	_c.Call.Return(stringToTransactions, err)
+func (_c *WalletStorageMock_FilterWatchedWallets_Call) Return(strings []string, err error) *WalletStorageMock_FilterWatchedWallets_Call {
+	_c.Call.Return(strings, err)
 	return _c
 }
 
-func (_c *WalletStorageMock_GetTransactionsByWallet_Call) RunAndReturn(run func(ctx context.Context, network string, txs []Transaction) (map[string][]Transaction, error)) *WalletStorageMock_GetTransactionsByWallet_Call {
+func (_c *WalletStorageMock_FilterWatchedWallets_Call) RunAndReturn(run func(ctx context.Context, network string, addresses []string) ([]string, error)) *WalletStorageMock_FilterWatchedWallets_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/gabapcia/blockwatch/internal/pkg/logger"
+	"github.com/gabapcia/blockwatch/internal/pkg/types"
 )
 
 // TransactionNotifier defines a mechanism for notifying external components
@@ -23,25 +24,100 @@ type TransactionNotifier interface {
 	NotifyTransactions(ctx context.Context, network, wallet string, txs []Transaction) error
 }
 
-// WalletStorage defines the contract for identifying watched wallet addresses
-// involved in a given set of blockchain transactions.
+// WalletStorage defines the contract for querying which wallet addresses
+// have opted in for monitoring (i.e., are being actively watched).
 //
-// Implementations are responsible for determining which wallet addresses are
-// being actively watched (opted-in) and returning only the subset of those
-// that appear in the provided transactions.
+// It allows the caller to determine which subset of provided addresses
+// are registered for observation.
 type WalletStorage interface {
-	// GetTransactionsByWallet scans the given slice of transactions (txs) for the specified
-	// blockchain network (e.g., "ethereum", "solana") and returns a mapping where:
+	// FilterWatchedWallets takes a slice of wallet addresses and returns
+	// only those that are currently being monitored for the given network.
 	//
-	//   - Each key is a wallet address that is actively watched.
-	//   - Each value is a list of Transaction objects where that wallet was involved,
-	//     either as sender (From) or recipient (To).
+	// Parameters:
+	//   - ctx: context for cancellation and timeout control.
+	//   - network: the blockchain network (e.g., "ethereum", "solana").
+	//   - addresses: a list of wallet addresses to check.
 	//
-	// Only transactions involving watched wallets should be included in the result.
-	//
-	// The context parameter controls cancellation and timeouts for any underlying operations
-	// such as database queries or remote lookups.
-	GetTransactionsByWallet(ctx context.Context, network string, txs []Transaction) (map[string][]Transaction, error)
+	// Returns:
+	//   - A slice containing only the wallet addresses that are actively watched.
+	//   - An error if the lookup fails.
+	FilterWatchedWallets(ctx context.Context, network string, addresses []string) ([]string, error)
+}
+
+func (s *service) getTransactionsByWallet(ctx context.Context, network string, txs []Transaction) (map[string][]Transaction, error) {
+	var (
+		walletsSet           = types.NewSet[string]()
+		transactionsMap      = make(map[string]Transaction)
+		transactionsByWallet = types.NewDefaultMap[string](func() types.Set[string] { return types.NewSet[string]() })
+	)
+	for _, tx := range txs {
+		walletsSet.Add(tx.From, tx.To)
+		transactionsMap[tx.Hash] = tx
+
+		txHashes := transactionsByWallet.Get(tx.From)
+		txHashes.Add(tx.Hash)
+		transactionsByWallet.Set(tx.From, txHashes)
+
+		txHashes = transactionsByWallet.Get(tx.To)
+		txHashes.Add(tx.Hash)
+		transactionsByWallet.Set(tx.To, txHashes)
+	}
+
+	watchedWallets, err := s.walletStorage.FilterWatchedWallets(ctx, network, walletsSet.ToSlice())
+	if err != nil {
+		return nil, err
+	}
+
+	matchingTxsByWallet := types.NewDefaultMap[string](func() []Transaction { return make([]Transaction, 0) })
+	for _, address := range watchedWallets {
+		for txHash := range transactionsByWallet.Get(address).ToIter() {
+			txs := matchingTxsByWallet.Get(address)
+			matchingTxsByWallet.Set(address, append(txs, transactionsMap[txHash]))
+		}
+	}
+
+	return matchingTxsByWallet.ToMap(), nil
+}
+
+func (s *service) getTransactionsByWalletV2(ctx context.Context, network string, txs []Transaction) (map[string][]Transaction, error) {
+	var (
+		walletsSet           = types.NewSet[string]()
+		transactionsMap      = make(map[string]Transaction)
+		transactionsByWallet = types.NewDefaultMap[string](func() *types.Set[string] {
+			s := types.NewSet[string]()
+			return &s
+		})
+	)
+
+	for _, tx := range txs {
+		walletsSet.Add(tx.From, tx.To)
+		transactionsMap[tx.Hash] = tx
+		transactionsByWallet.Get(tx.From).Add(tx.Hash)
+		transactionsByWallet.Get(tx.To).Add(tx.Hash)
+	}
+
+	watchedWallets, err := s.walletStorage.FilterWatchedWallets(ctx, network, walletsSet.ToSlice())
+	if err != nil {
+		return nil, err
+	}
+
+	matchingTxsByWallet := types.NewDefaultMap[string](func() *[]Transaction {
+		s := make([]Transaction, 0, 2)
+		return &s
+	})
+
+	for _, address := range watchedWallets {
+		for txHash := range transactionsByWallet.Get(address).ToIter() {
+			*matchingTxsByWallet.Get(address) = append(*matchingTxsByWallet.Get(address), transactionsMap[txHash])
+		}
+	}
+
+	result := make(map[string][]Transaction)
+	for address, txs := range matchingTxsByWallet.ToMap() {
+		result[address] = *txs
+	}
+
+	return result, nil
 }
 
 // notifyWatchedWalletTransactions identifies transactions involving watched wallet addresses
@@ -64,7 +140,7 @@ type WalletStorage interface {
 //   - If any call to NotifyTransaction fails, processing stops and the error is returned.
 //   - Otherwise, all relevant transactions are notified successfully.
 func (s *service) notifyWatchedWalletTransactions(ctx context.Context, network string, txs []Transaction) error {
-	matchingTxsByWallet, err := s.walletStorage.GetTransactionsByWallet(ctx, network, txs)
+	matchingTxsByWallet, err := s.getTransactionsByWallet(ctx, network, txs)
 	if err != nil {
 		return err
 	}
