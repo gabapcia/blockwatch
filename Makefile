@@ -35,19 +35,3 @@ coverage:
 	@go test -coverprofile=coverage.out ./...
 	@go tool cover -html=coverage.out -o coverage.html
 	@open coverage.html
-
-# Benchmarks
-.PHONY: benchmark
-benchmark:
-	@echo "Running quick benchmark comparison..."
-	@go test -bench=BenchmarkGetTransactionsByWallet.*_Small -benchmem ./internal/walletwatch
-
-.PHONY: benchmark-full
-benchmark-full:
-	@echo "Running comprehensive benchmark suite..."
-	@./scripts/run_benchmarks.sh
-
-.PHONY: benchmark-compare
-benchmark-compare:
-	@echo "Running side-by-side comparison..."
-	@go test -bench=BenchmarkGetTransactionsByWallet.*_Medium -benchmem -count=3 ./internal/walletwatch
