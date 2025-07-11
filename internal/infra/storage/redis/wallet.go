@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gabapcia/blockwatch/internal/walletregistry"
 	"github.com/gabapcia/blockwatch/internal/walletwatch"
 )
 
@@ -18,6 +19,64 @@ const walletStoragePrefix = "wallet"
 func walletStorageKey(network string) string {
 	return fmt.Sprintf("%s:storage:%s", walletStoragePrefix, network)
 }
+
+// RegisterWallet adds the wallet address to the Redis set for the given network.
+//
+// If the wallet address is already registered (i.e., already present in the set),
+// it returns walletregistry.ErrWalletAlreadyRegistered.
+//
+// Parameters:
+//   - ctx: context for timeout and cancellation.
+//   - id: the WalletIdentifier containing the network and address.
+//
+// Returns:
+//   - nil on success.
+//   - walletregistry.ErrWalletAlreadyRegistered if the wallet was already registered.
+//   - Any Redis-related error if the operation fails.
+func (c *client) RegisterWallet(ctx context.Context, id walletregistry.WalletIdentifier) error {
+	key := walletStorageKey(id.Network)
+
+	count, err := c.conn.SAdd(ctx, key, id.Address).Result()
+	if err != nil {
+		return err
+	}
+
+	if count == 0 {
+		return walletregistry.ErrWalletAlreadyRegistered
+	}
+
+	return nil
+}
+
+// UnregisterWallet removes the wallet address from the Redis set for the given network.
+//
+// If the address is not found in the set, it returns walletregistry.ErrWalletNotFound.
+//
+// Parameters:
+//   - ctx: context for timeout and cancellation.
+//   - id: the WalletIdentifier containing the network and address.
+//
+// Returns:
+//   - nil on success.
+//   - walletregistry.ErrWalletNotFound if the wallet was not registered.
+//   - Any Redis-related error if the operation fails.
+func (c *client) UnregisterWallet(ctx context.Context, id walletregistry.WalletIdentifier) error {
+	key := walletStorageKey(id.Network)
+
+	count, err := c.conn.SRem(ctx, key, id.Address).Result()
+	if err != nil {
+		return err
+	}
+
+	if count == 0 {
+		return walletregistry.ErrWalletNotFound
+	}
+
+	return nil
+}
+
+// Compile-time assertion to ensure *client satisfies the walletregistry.WalletStorage interface
+var _ walletregistry.WalletStorage = new(client)
 
 // FilterWatchedWallets implements the walletwatch.WalletStorage interface using Redis sets.
 //
