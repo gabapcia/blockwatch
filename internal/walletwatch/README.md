@@ -6,6 +6,8 @@ The `walletwatch` package provides a service for monitoring blockchain blocks, i
 
 WalletWatch processes blocks from a blockchain, filters transactions to find those involving wallets that are being watched, and sends notifications for these transactions. It is designed to be used in conjunction with a block streaming service (like `chainstream`) and can be configured with custom storage for watched wallets and custom notifiers.
 
+The package includes an optimized transaction filtering algorithm with the `getTransactionsByWallet` function, which has been performance-tested to ensure efficient processing of large transaction volumes at blockchain scale.
+
 ## Architecture
 
 ### Core Components
@@ -43,8 +45,9 @@ The service depends on an implementation of the `WalletStorage` interface to det
 
 ```go
 type WalletStorage interface {
-    // FindByAddress checks if a wallet with the given address exists.
-    FindByAddress(ctx context.Context, address string) (Wallet, error)
+    // FilterWatchedWallets filters the provided list of wallet addresses and returns
+    // only those that are currently under watch for the specified network.
+    FilterWatchedWallets(ctx context.Context, network string, addresses []string) ([]string, error)
 }
 ```
 
@@ -53,8 +56,9 @@ This interface is used to send notifications for relevant transactions.
 
 ```go
 type TransactionNotifier interface {
-    // Notify sends a transaction notification.
-    Notify(ctx context.Context, transaction Transaction) error
+    // NotifyTransactions is invoked whenever transactions involving a watched
+    // wallet address are detected.
+    NotifyTransactions(ctx context.Context, network, wallet string, txs []Transaction) error
 }
 ```
 
@@ -111,10 +115,10 @@ service := walletwatch.New(walletStorage, transactionNotifier, options...)
 2.  **Claim Block**: If an `IdempotencyGuard` is configured, it calls `ClaimBlockForTxWatch`.
     - If the block is already processed (`ErrAlreadyFinished`) or being processed (`ErrStillInProgress`), the respective error is returned.
     - If the claim fails for other reasons, the error is propagated.
-3.  **Process Transactions**: If the claim is successful, the service iterates through each transaction.
-4.  **Filter Wallets**: For each transaction, it checks if the `From` or `To` address is in the `WalletStorage`.
-5.  **Dispatch Notification**: If a wallet match is found, the `TransactionNotifier` is called.
-6.  **Mark Complete**: After processing, `MarkBlockTxWatchComplete` is called to prevent future reprocessing. If this fails, an error is returned.
+3.  **Process Transactions**: If the claim is successful, the service uses the optimized `getTransactionsByWallet` function to efficiently filter transactions.
+4.  **Filter Wallets**: The function builds an index of all addresses, queries `WalletStorage` to identify watched wallets, and maps transactions to relevant wallets.
+5.  **Dispatch Notification**: For each watched wallet with matching transactions, the `TransactionNotifier` is called.
+6.  **Mark Complete**: After processing, `MarkBlockTxWatchComplete` is called to prevent future reprocessing. If this fails, an error is logged but not propagated.
 7.  **Timeout Control**: The entire process is governed by a `maxProcessingTime`.
 
 ### 3. Workflow Diagram
@@ -134,6 +138,42 @@ graph TD
     style H fill:#d4edda,stroke:#155724,stroke-width:2px
     style D fill:#f8d7da,stroke:#721c24,stroke-width:2px
 ```
+
+## Performance Optimization
+
+### getTransactionsByWallet Algorithm
+
+The core transaction filtering is handled by the `getTransactionsByWallet` function, which implements an optimized algorithm for identifying transactions involving watched wallets:
+
+1. **Address Indexing**: Builds a unique set of all wallet addresses appearing in transactions
+2. **Transaction Mapping**: Creates a reverse index mapping addresses to transaction hashes
+3. **Watched Wallet Filtering**: Queries `WalletStorage` to identify which addresses are being watched
+4. **Result Construction**: Efficiently maps watched wallets to their associated transactions
+
+This approach minimizes database queries and provides O(1) lookup performance for transaction-to-wallet associations.
+
+### Performance Benchmark Results
+
+A comprehensive benchmark was conducted comparing the current implementation (`getTransactionsByWallet`) against an alternative approach (`getTransactionsByWalletV2`). The benchmark tested performance across various dataset sizes, from small test scenarios to Solana-scale workloads (25k transactions, 100k addresses).
+
+**Key Findings:**
+- **Memory Efficiency**: The current implementation makes 41-49% fewer allocations at blockchain scale
+- **GC Performance**: Significantly reduced garbage collection pressure due to fewer allocations
+- **Scalability**: Better performance characteristics as dataset size increases
+- **Production Suitability**: Optimized for sustained performance under continuous load
+
+**Benchmark Results Summary:**
+
+| Dataset Scale | V1 (Current) Allocations | V2 (Alternative) Allocations | V1 Advantage |
+|---------------|-------------------------|------------------------------|--------------|
+| Small (10 wallets) | 574 allocs/op | 627 allocs/op | 9% fewer |
+| Medium (100 wallets) | 1,388 allocs/op | 1,897 allocs/op | 37% fewer |
+| Large (1000 wallets) | 4,126 allocs/op | 5,148 allocs/op | 25% fewer |
+| Solana Scale | 52,511 allocs/op | 77,533 allocs/op | 48% fewer |
+
+The current implementation was chosen for production use due to its superior memory efficiency and allocation patterns, which are critical for high-throughput blockchain processing environments.
+
+For detailed benchmark results and analysis, see the [performance benchmark report](https://github.com/gabapcia/blockwatch/blob/a52ff4c983ff652d9d404717adbd59a1c9a2e151/internal/walletwatch/report.md).
 
 ## Usage
 
@@ -185,6 +225,15 @@ service := walletwatch.New(ws, tn,
     walletwatch.WithIdempotencyGuard(idempotencyGuard),
 )
 ```
+
+## Error Handling
+
+The service defines specific error types for idempotency control:
+
+- `ErrStillInProgress`: Returned when a block is currently being processed by another instance
+- `ErrAlreadyFinished`: Returned when a block has already been processed successfully
+
+These errors allow upstream logic to implement appropriate retry or skip behavior.
 
 ## Integration
 
