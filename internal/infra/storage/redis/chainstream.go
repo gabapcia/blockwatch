@@ -15,6 +15,8 @@ import (
 // chainstreamKeyPrefix is the namespace prefix for all keys related to the chainstream checkpointing system.
 const chainstreamKeyPrefix = "chainstream"
 
+// makeBlockDispatchFailureMessage converts a BlockDispatchFailure into a map[string]any
+// suitable for sending to Redis streams.
 func makeBlockDispatchFailureMessage(dispatchFailure chainstream.BlockDispatchFailure) map[string]any {
 	return map[string]any{
 		"network": dispatchFailure.Network, // name of the blockchain network (e.g., "ethereum")
@@ -23,6 +25,18 @@ func makeBlockDispatchFailureMessage(dispatchFailure chainstream.BlockDispatchFa
 	}
 }
 
+// BuildChainstreamDispatchFailureHandler returns a DispatchFailureHandler that logs block dispatch
+// failures to a Redis stream.
+//
+// Each failure is added as an entry to the given stream, with fields for network, height, and errors.
+// This function does not create the stream and expects it to already exist in Redis.
+// If the Redis operation fails, the error is logged.
+//
+// Parameters:
+//   - stream: the Redis stream name to write failures to.
+//
+// Returns:
+//   - A function matching the chainstream.DispatchFailureHandler signature.
 func (c *client) BuildChainstreamDispatchFailureHandler(stream string) chainstream.DispatchFailureHandler {
 	return func(ctx context.Context, dispatchFailure chainstream.BlockDispatchFailure) {
 		cmd := c.conn.XAdd(ctx, &redis.XAddArgs{
