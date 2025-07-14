@@ -41,9 +41,9 @@ type Service interface {
 // to gracefully shut down all background operations.
 type closeFunc func()
 
-// dispatchFailureHandler is a user-provided function called whenever a block dispatch
+// DispatchFailureHandler is a user-provided function called whenever a block dispatch
 // (i.e., sending a fetched block for processing) fails and cannot be recovered.
-type dispatchFailureHandler func(ctx context.Context, dispatchFailure BlockDispatchFailure)
+type DispatchFailureHandler func(ctx context.Context, dispatchFailure BlockDispatchFailure)
 
 // service is the internal implementation of the Service interface.
 // It orchestrates subscriptions, retries, and block delivery for multiple blockchain networks.
@@ -56,7 +56,7 @@ type service struct {
 	checkpointStorage CheckpointStorage     // mechanism for saving/restoring last processed height
 
 	retry                  retry.Retry            // optional retry logic for failed block fetches
-	dispatchFailureHandler dispatchFailureHandler // user-defined callback for unrecoverable dispatch errors
+	dispatchFailureHandler DispatchFailureHandler // user-defined callback for unrecoverable dispatch errors
 }
 
 // Compile-time check to ensure *service implements the Service interface.
@@ -136,7 +136,7 @@ func (s *service) Close() {
 type config struct {
 	retry                  retry.Retry            // optional retry mechanism for transient fetch failures
 	checkpointStorage      CheckpointStorage      // storage backend for tracking the last processed block
-	dispatchFailureHandler dispatchFailureHandler // user-defined handler for unrecoverable dispatch errors
+	dispatchFailureHandler DispatchFailureHandler // user-defined handler for unrecoverable dispatch errors
 }
 
 // Option defines a functional option for configuring a Service instance.
@@ -186,7 +186,7 @@ func defaultOnDispatchFailure(ctx context.Context, dispatchFailure BlockDispatch
 // block dispatch failures (e.g., due to permanent fetch errors).
 //
 // By default, failures are logged using the standard logger.
-func WithDispatchFailureHandler(f dispatchFailureHandler) Option {
+func WithDispatchFailureHandler(f DispatchFailureHandler) Option {
 	return func(c *config) {
 		c.dispatchFailureHandler = f
 	}

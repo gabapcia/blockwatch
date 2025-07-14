@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/gabapcia/blockwatch/internal/chainstream"
+	"github.com/gabapcia/blockwatch/internal/pkg/logger"
 	"github.com/gabapcia/blockwatch/internal/pkg/types"
 
 	"github.com/redis/go-redis/v9"
@@ -13,6 +14,31 @@ import (
 
 // chainstreamKeyPrefix is the namespace prefix for all keys related to the chainstream checkpointing system.
 const chainstreamKeyPrefix = "chainstream"
+
+func makeBlockDispatchFailureMessage(dispatchFailure chainstream.BlockDispatchFailure) map[string]any {
+	return map[string]any{
+		"network": dispatchFailure.Network, // name of the blockchain network (e.g., "ethereum")
+		"height":  dispatchFailure.Height,  // block height that failed to be dispatched
+		"errors":  dispatchFailure.Errors,  // slice of all errors encountered during dispatch and retry attempts
+	}
+}
+
+func (c *client) BuildChainstreamDispatchFailureHandler(stream string) chainstream.DispatchFailureHandler {
+	return func(ctx context.Context, dispatchFailure chainstream.BlockDispatchFailure) {
+		cmd := c.conn.XAdd(ctx, &redis.XAddArgs{
+			Stream:     stream,
+			ID:         "*",
+			NoMkStream: true,
+			Values:     makeBlockDispatchFailureMessage(dispatchFailure),
+		})
+		if err := cmd.Err(); err != nil {
+			logger.Error(ctx, "stream xadd failed",
+				"redis.stream", stream,
+				"error", err,
+			)
+		}
+	}
+}
 
 // chainstreamCheckpointKey constructs the Redis key used to store the latest processed block height
 // for a specific blockchain network. The format is:
