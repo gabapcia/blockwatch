@@ -13,9 +13,9 @@ import (
 const walletStoragePrefix = "wallet"
 
 // walletStorageKey returns the Redis key under which watched wallet addresses
-// are stored for the specified blockchain network.
+// are stored for the specified blockchain network. The format is:
 //
-// Format: "wallet:storage:{network}"
+//	"wallet:storage:{network}"
 func walletStorageKey(network string) string {
 	return fmt.Sprintf("%s:storage:%s", walletStoragePrefix, network)
 }
@@ -101,13 +101,11 @@ func (c *client) FilterWatchedWallets(ctx context.Context, network string, addre
 		addressesAsAny[i] = addr
 	}
 
-	// Perform bulk membership check in Redis set
 	matchResult, err := c.conn.SMIsMember(ctx, key, addressesAsAny...).Result()
 	if err != nil {
 		return nil, err
 	}
 
-	// Filter the input addresses based on membership result
 	matched := make([]string, 0, len(addresses))
 	for i, isMember := range matchResult {
 		if isMember {
