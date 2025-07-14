@@ -15,6 +15,16 @@ import (
 // chainstreamKeyPrefix is the namespace prefix for all keys related to the chainstream checkpointing system.
 const chainstreamKeyPrefix = "chainstream"
 
+// chainstreamDispatchFailuresStreamKey returns the Redis key used for storing
+// block dispatch failure events.
+//
+// Format:
+//
+//	"chainstream:streams:dispatch-failures"
+func chainstreamDispatchFailuresStreamKey() string {
+	return fmt.Sprintf("%s:streams:dispatch-failures", chainstreamKeyPrefix)
+}
+
 // makeBlockDispatchFailureMessage converts a BlockDispatchFailure into a map[string]any
 // suitable for sending to Redis streams.
 func makeBlockDispatchFailureMessage(dispatchFailure chainstream.BlockDispatchFailure) map[string]any {
@@ -25,34 +35,35 @@ func makeBlockDispatchFailureMessage(dispatchFailure chainstream.BlockDispatchFa
 	}
 }
 
-// BuildChainstreamDispatchFailureHandler returns a DispatchFailureHandler that logs block dispatch
-// failures to a Redis stream.
+// NotifyChainstreamDispatchFailures sends a block dispatch failure event to a predefined Redis stream.
 //
-// Each failure is added as an entry to the given stream, with fields for network, height, and errors.
-// This function does not create the stream and expects it to already exist in Redis.
+// The event includes the network name, block height, and error details. This method uses
+// a fixed stream key ("chainstream:streams:dispatch-failures") and adds the entry with
+// an auto-generated ID.
+//
 // If the Redis operation fails, the error is logged.
 //
 // Parameters:
-//   - stream: the Redis stream name to write failures to.
-//
-// Returns:
-//   - A function matching the chainstream.DispatchFailureHandler signature.
-func (c *client) BuildChainstreamDispatchFailureHandler(stream string) chainstream.DispatchFailureHandler {
-	return func(ctx context.Context, dispatchFailure chainstream.BlockDispatchFailure) {
-		cmd := c.conn.XAdd(ctx, &redis.XAddArgs{
-			Stream:     stream,
-			ID:         "*",
-			NoMkStream: true,
-			Values:     makeBlockDispatchFailureMessage(dispatchFailure),
-		})
-		if err := cmd.Err(); err != nil {
-			logger.Error(ctx, "stream xadd failed",
-				"redis.stream", stream,
-				"error", err,
-			)
-		}
+//   - ctx: context for timeout and cancellation.
+//   - dispatchFailure: the failure event to be sent.
+func (c *client) NotifyChainstreamDispatchFailures(ctx context.Context, dispatchFailure chainstream.BlockDispatchFailure) {
+	stream := chainstreamDispatchFailuresStreamKey()
+
+	cmd := c.conn.XAdd(ctx, &redis.XAddArgs{
+		Stream: stream,
+		ID:     "*",
+		Values: makeBlockDispatchFailureMessage(dispatchFailure),
+	})
+	if err := cmd.Err(); err != nil {
+		logger.Error(ctx, "stream xadd failed",
+			"redis.stream", stream,
+			"error", err,
+		)
 	}
 }
+
+// Compile-time assertion to ensure client implements the DispatchFailureHandler interface.
+var _ chainstream.DispatchFailureHandler = new(client).NotifyChainstreamDispatchFailures
 
 // chainstreamCheckpointKey constructs the Redis key used to store the latest processed block height
 // for a specific blockchain network. The format is:
