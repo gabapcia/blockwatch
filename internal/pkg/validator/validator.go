@@ -31,8 +31,12 @@ const errStringFormat = "'%s': value '%v' does not meet the requirements for the
 // init initializes the singleton validator instance automatically on package import.
 //
 // It enables validation for required fields in structs using tags like `validate:"required"`.
+// It also registers custom validation rules.
 func init() {
 	validator = gvalidator.New(gvalidator.WithRequiredStructEnabled())
+
+	// Register custom validators
+	validator.RegisterValidation("required_alone", requiredAloneValidator)
 }
 
 // formatError transforms a raw validator error into a structured, human-readable multi-error chain.
