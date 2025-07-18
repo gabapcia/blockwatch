@@ -325,4 +325,46 @@ func TestRequiredAloneValidator(t *testing.T) {
 		err := Validate(input)
 		assert.NoError(t, err)
 	})
+
+	t.Run("valid - struct with unexported fields", func(t *testing.T) {
+		input := struct {
+			PublicField  string `validate:"required_alone"`
+			privateField string // unexported field should be ignored
+			AnotherField string `validate:"required_alone"`
+		}{
+			PublicField:  "value",
+			privateField: "ignored", // this should be ignored by the validator
+			AnotherField: "",
+		}
+
+		err := Validate(input)
+		assert.NoError(t, err)
+	})
+
+	t.Run("edge case - deeply nested struct", func(t *testing.T) {
+		type Level3 struct {
+			Field1 string `validate:"required_alone"`
+			Field2 string `validate:"required_alone"`
+		}
+
+		type Level2 struct {
+			Nested Level3 `validate:"required"`
+		}
+
+		type Level1 struct {
+			Nested Level2 `validate:"required"`
+		}
+
+		input := Level1{
+			Nested: Level2{
+				Nested: Level3{
+					Field1: "value",
+					Field2: "",
+				},
+			},
+		}
+
+		err := Validate(input)
+		assert.NoError(t, err)
+	})
 }

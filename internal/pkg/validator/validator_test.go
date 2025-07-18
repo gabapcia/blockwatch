@@ -56,7 +56,7 @@ func TestFormatError(t *testing.T) {
 		formattedErr := formatError(err)
 
 		assert.ErrorIs(t, formattedErr, ErrValidationFailed)
-		assert.Contains(t, formattedErr.Error(), "'Name': value '' does not meet the requirements for the 'required' validation")
+		assert.Contains(t, formattedErr.Error(), "'TestStruct.Name': value '' does not meet the requirements for the 'required' validation")
 	})
 
 	t.Run("should return original error when not validation error", func(t *testing.T) {
@@ -86,8 +86,8 @@ func TestFormatError(t *testing.T) {
 
 		assert.ErrorIs(t, formattedErr, ErrValidationFailed)
 		errStr := formattedErr.Error()
-		assert.Contains(t, errStr, "'Name': value '' does not meet the requirements for the 'required' validation")
-		assert.Contains(t, errStr, "'Email': value 'invalid' does not meet the requirements for the 'email' validation")
+		assert.Contains(t, errStr, "'MultiFieldStruct.Name': value '' does not meet the requirements for the 'required' validation")
+		assert.Contains(t, errStr, "'MultiFieldStruct.Email': value 'invalid' does not meet the requirements for the 'email' validation")
 	})
 }
 
@@ -187,7 +187,7 @@ func TestValidate(t *testing.T) {
 		err := Validate(user)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, ErrValidationFailed)
-		assert.Contains(t, err.Error(), "'Name': value '' does not meet the requirements for the 'required' validation")
+		assert.Contains(t, err.Error(), "'User.Name': value '' does not meet the requirements for the 'required' validation")
 	})
 
 	t.Run("should fail when email format is invalid", func(t *testing.T) {
@@ -202,7 +202,7 @@ func TestValidate(t *testing.T) {
 		err := Validate(contact)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, ErrValidationFailed)
-		assert.Contains(t, err.Error(), "'Email': value 'not-an-email' does not meet the requirements for the 'email' validation")
+		assert.Contains(t, err.Error(), "'Contact.Email': value 'not-an-email' does not meet the requirements for the 'email' validation")
 	})
 
 	t.Run("should fail when numeric value is below minimum", func(t *testing.T) {
@@ -216,7 +216,7 @@ func TestValidate(t *testing.T) {
 
 		err := Validate(product)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "'Price': value '-10' does not meet the requirements for the 'min' validation")
+		assert.Contains(t, err.Error(), "'Product.Price': value '-10' does not meet the requirements for the 'min' validation")
 	})
 
 	t.Run("should fail when numeric value is above maximum", func(t *testing.T) {
@@ -230,7 +230,7 @@ func TestValidate(t *testing.T) {
 
 		err := Validate(person)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "'Age': value '200' does not meet the requirements for the 'max' validation")
+		assert.Contains(t, err.Error(), "'Person.Age': value '200' does not meet the requirements for the 'max' validation")
 	})
 
 	t.Run("should fail when enum value is invalid", func(t *testing.T) {
@@ -245,7 +245,7 @@ func TestValidate(t *testing.T) {
 		err := Validate(task)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, ErrValidationFailed)
-		assert.Contains(t, err.Error(), "'Status': value 'invalid_status' does not meet the requirements for the 'oneof' validation")
+		assert.Contains(t, err.Error(), "'Task.Status': value 'invalid_status' does not meet the requirements for the 'oneof' validation")
 	})
 
 	t.Run("should fail with multiple validation errors", func(t *testing.T) {
@@ -268,10 +268,10 @@ func TestValidate(t *testing.T) {
 		assert.ErrorIs(t, err, ErrValidationFailed)
 
 		errStr := err.Error()
-		assert.Contains(t, errStr, "'Username': value '' does not meet the requirements for the 'required' validation")
-		assert.Contains(t, errStr, "'Email': value 'invalid-email' does not meet the requirements for the 'email' validation")
-		assert.Contains(t, errStr, "'Age': value '15' does not meet the requirements for the 'min' validation")
-		assert.Contains(t, errStr, "'Role': value 'superuser' does not meet the requirements for the 'oneof' validation")
+		assert.Contains(t, errStr, "'Registration.Username': value '' does not meet the requirements for the 'required' validation")
+		assert.Contains(t, errStr, "'Registration.Email': value 'invalid-email' does not meet the requirements for the 'email' validation")
+		assert.Contains(t, errStr, "'Registration.Age': value '15' does not meet the requirements for the 'min' validation")
+		assert.Contains(t, errStr, "'Registration.Role': value 'superuser' does not meet the requirements for the 'oneof' validation")
 	})
 
 	t.Run("should fail when nested struct validation fails", func(t *testing.T) {
@@ -328,6 +328,6 @@ func TestValidate(t *testing.T) {
 		invalidPriority := Priority{Level: "urgent"}
 		err := Validate(invalidPriority)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "'Level': value 'urgent' does not meet the requirements for the 'oneof' validation")
+		assert.Contains(t, err.Error(), "'Priority.Level': value 'urgent' does not meet the requirements for the 'oneof' validation")
 	})
 }

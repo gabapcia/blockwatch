@@ -1,8 +1,6 @@
 package validator
 
 import (
-	"reflect"
-
 	gvalidator "github.com/go-playground/validator/v10"
 )
 
@@ -35,9 +33,6 @@ func requiredAloneValidator(fl gvalidator.FieldLevel) bool {
 
 	// Get the parent struct
 	parent := fl.Parent()
-	if parent.Kind() != reflect.Struct {
-		return false
-	}
 
 	// If current field has a value, check that all other fields are empty
 	structType := parent.Type()
