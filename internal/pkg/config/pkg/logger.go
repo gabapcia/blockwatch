@@ -6,5 +6,5 @@ type Logger struct {
 	//
 	// Accepted values: "DEBUG", "INFO", "WARN", "ERROR", "PANIC", "FATAL".
 	// Default: "INFO".
-	Level string `default:"INFO" validate:"oneof=DEBUG INFO WARN ERROR PANIC FATAL"`
+	Level string `env:"LEVEL, default=INFO" validate:"oneof=DEBUG INFO WARN ERROR PANIC FATAL"`
 }

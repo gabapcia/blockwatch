@@ -11,16 +11,16 @@ const (
 
 // Engines contains global/shared messaging engine configurations.
 type Engines struct {
-	Redis    Redis    `validate:"omitempty"` // Redis holds the global Redis Streams messaging configuration.
-	RabbitMQ RabbitMQ `validate:"omitempty"` // RabbitMQ holds the global RabbitMQ messaging configuration.
+	Redis    *Redis    `env:", prefix=REDIS_" validate:"omitempty"`    // Redis holds the global Redis Streams messaging configuration.
+	RabbitMQ *RabbitMQ `env:", prefix=RABBITMQ_" validate:"omitempty"` // RabbitMQ holds the global RabbitMQ messaging configuration.
 }
 
 // InlineConfig defines an inline messaging configuration for a specific use case.
 //
 // Only one engine should be configured per instance.
 type InlineConfig struct {
-	Redis    Redis    `validate:"required_alone"` // Redis holds the inline Redis Streams configuration.
-	RabbitMQ RabbitMQ `validate:"required_alone"` // RabbitMQ holds the inline RabbitMQ configuration.
+	Redis    *Redis    `env:", prefix=REDIS_" validate:"omitempty,required_alone"`    // Redis holds the inline Redis Streams configuration.
+	RabbitMQ *RabbitMQ `env:", prefix=RABBITMQ_" validate:"omitempty,required_alone"` // RabbitMQ holds the inline RabbitMQ configuration.
 }
 
 // Picker allows a use case to select a messaging engine by name or provide an inline configuration.
@@ -29,8 +29,8 @@ type InlineConfig struct {
 type Picker struct {
 	// Engine indicates which globally defined messaging engine to use.
 	// Accepted values: "REDIS", "RABBITMQ".
-	Engine string `validate:"omitempty,oneof=REDIS RABBITMQ"`
+	Engine string `env:"ENGINE" validate:"omitempty,oneof=REDIS RABBITMQ"`
 
 	// Config provides an inline configuration to use instead of a global engine.
-	Config InlineConfig `validate:"required_without=Engine,excluded_with=Engine"`
+	Config InlineConfig `env:", prefix=CONFIG_" validate:"required_without=Engine,excluded_with=Engine"`
 }

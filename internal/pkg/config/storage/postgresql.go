@@ -7,5 +7,5 @@ type PostgreSQL struct {
 	// Examples:
 	//   - URL-style:   "postgres://user:pass@host:port/dbname"
 	//   - libpq-style: "host=localhost port=5432 user=... password=... dbname=..."
-	DSN string `validate:"required"`
+	DSN string `env:"DSN" validate:"required"`
 }

@@ -14,8 +14,8 @@ const (
 //
 // Each field is optional and only populated if explicitly configured.
 type Engines struct {
-	Redis    Redis      `validate:"omitempty"` // Global Redis configuration
-	Postgres PostgreSQL `validate:"omitempty"` // Global PostgreSQL configuration
+	Redis      *Redis      `env:", prefix=REDIS_" validate:"omitempty"`      // Global Redis configuration
+	PostgreSQL *PostgreSQL `env:", prefix=POSTGRESQL_" validate:"omitempty"` // Global PostgreSQL configuration
 }
 
 // InlineConfig defines an inline storage configuration for a specific use case.
@@ -23,8 +23,8 @@ type Engines struct {
 // Only one engine must be configured per instance. This struct is mutually exclusive
 // with Engine-based selection in Picker.
 type InlineConfig struct {
-	Redis    Redis      `validate:"required_alone"` // Inline Redis configuration
-	Postgres PostgreSQL `validate:"required_alone"` // Inline PostgreSQL configuration
+	Redis      *Redis      `env:", prefix=REDIS_" validate:"omitempty,required_alone"`      // Inline Redis configuration
+	PostgreSQL *PostgreSQL `env:", prefix=POSTGRESQL_" validate:"omitempty,required_alone"` // Inline PostgreSQL configuration
 }
 
 // Picker allows a use case to select a storage configuration either by referring to a
@@ -37,8 +37,8 @@ type InlineConfig struct {
 type Picker struct {
 	// Engine indicates which globally defined storage engine to use.
 	// Accepted values: "REDIS", "POSTGRESQL".
-	Engine string `validate:"omitempty,oneof=REDIS POSTGRESQL"`
+	Engine string `env:"ENGINE" validate:"omitempty,oneof=REDIS POSTGRESQL"`
 
 	// Config provides an inline configuration for use-case-specific connection setup.
-	Config InlineConfig `validate:"required_without=Engine,excluded_with=Engine"`
+	Config InlineConfig `env:", prefix=CONFIG_" validate:"required_without=Engine,excluded_with=Engine"`
 }

@@ -52,7 +52,7 @@ func formatError(err error) error {
 	errs := []error{ErrValidationFailed}
 	for _, validationErr := range validationErrors {
 		err := fmt.Errorf(errStringFormat,
-			validationErr.Field(),
+			validationErr.Namespace(),
 			validationErr.Value(),
 			validationErr.Tag(),
 		)

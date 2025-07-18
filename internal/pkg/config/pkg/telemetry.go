@@ -4,5 +4,5 @@ package pkg
 type Telemetry struct {
 	// ServiceName is the name used to identify this service in telemetry systems (e.g., logs, traces, metrics).
 	// Default: "blockwatch"
-	ServiceName string `default:"blockwatch"`
+	ServiceName string `env:"SERVICE_NAME, default=blockwatch" validate:"required"`
 }
