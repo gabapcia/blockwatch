@@ -6,6 +6,7 @@ import (
 	"github.com/gabapcia/blockwatch/internal/pkg/config/messaging"
 	"github.com/gabapcia/blockwatch/internal/pkg/config/pkg"
 	"github.com/gabapcia/blockwatch/internal/pkg/config/storage"
+	"github.com/gabapcia/blockwatch/internal/pkg/validator"
 
 	"github.com/kelseyhightower/envconfig"
 )
@@ -32,9 +33,25 @@ type Config struct {
 	Chainstream    ChainStream    // Chainstream contains the configuration for the chainstream use case.
 }
 
+// Load reads the application configuration from environment variables,
+// applies defaults, and performs validation.
+//
+// This function uses `envconfig` to populate the Config struct and `validator`
+// to ensure all fields meet their validation constraints.
+//
+// Parameters:
+//   - ctx: context for cancellation (not used in this implementation but reserved for future use).
+//
+// Returns:
+//   - A fully populated and validated Config struct.
+//   - An error if parsing or validation fails.
 func Load(ctx context.Context) (Config, error) {
 	var config Config
 	if err := envconfig.Process("", &config); err != nil {
+		return Config{}, err
+	}
+
+	if err := validator.Validate(config); err != nil {
 		return Config{}, err
 	}
 
