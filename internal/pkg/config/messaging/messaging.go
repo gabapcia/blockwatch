@@ -111,10 +111,10 @@ type InlineConfig struct {
 type Picker struct {
 	// Engine indicates which globally defined messaging engine to use.
 	// Accepted values: "REDIS", "RABBITMQ".
-	Engine string `env:"ENGINE" validate:"required_without=InlineConfig,omitempty,oneof=REDIS RABBITMQ"`
+	Engine string `env:"ENGINE" validate:"required_without=InlineConfig,excluded_with=InlineConfig,omitempty,oneof=REDIS RABBITMQ"`
 
 	// InlineConfig provides an inline configuration to use instead of a global engine.
-	InlineConfig `validate:"required_without=Engine"`
+	InlineConfig `validate:"required_without=Engine,excluded_with=Engine"`
 
 	// MessagePublisher holds the message publication configuration for the selected engine.
 	MessagePublisher `validate:"required"`
