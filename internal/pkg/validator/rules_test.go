@@ -367,4 +367,179 @@ func TestRequiredAloneValidator(t *testing.T) {
 		err := Validate(input)
 		assert.NoError(t, err)
 	})
+
+	t.Run("valid - object composition with embedded structs", func(t *testing.T) {
+		type RandomStruct struct {
+			RandomField string `validate:"required"`
+		}
+
+		type RandomInlineStruct struct {
+			Field1 *RandomStruct `validate:"omitempty,required_alone"`
+			Field2 *RandomStruct `validate:"omitempty,required_alone"`
+		}
+
+		type Input struct {
+			RandomInlineStruct `validate:"required"`
+			Field3             string `validate:"required"`
+		}
+
+		input := Input{
+			RandomInlineStruct: RandomInlineStruct{
+				Field1: &RandomStruct{RandomField: "test"},
+				Field2: nil,
+			},
+			Field3: "random-key",
+		}
+
+		err := Validate(input)
+		assert.NoError(t, err)
+	})
+
+	t.Run("invalid - object composition error contains required_alone tag", func(t *testing.T) {
+		type ConfigStruct struct {
+			Setting string `validate:"required"`
+		}
+
+		type ComposedStruct struct {
+			Config1 *ConfigStruct `validate:"omitempty,required_alone"`
+			Config2 *ConfigStruct `validate:"omitempty,required_alone"`
+		}
+
+		// Both embedded structs have values - should fail with required_alone in error
+		input := struct {
+			ComposedStruct `validate:"required"`
+			APIKey         string `validate:"required"`
+		}{
+			ComposedStruct: ComposedStruct{
+				Config1: &ConfigStruct{Setting: "value1"}, // has value
+				Config2: &ConfigStruct{Setting: "value2"}, // also has value - violation
+			},
+			APIKey: "api-key",
+		}
+
+		err := Validate(input)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrValidationFailed)
+		assert.Contains(t, err.Error(), "required_alone")
+	})
+
+	t.Run("invalid - composition error message contains field names and required_alone tag", func(t *testing.T) {
+		type DatabaseConfig struct {
+			Host string `validate:"required"`
+			Port int    `validate:"required"`
+		}
+
+		type RedisConfig struct {
+			URL      string `validate:"required"`
+			Password string `validate:"required"`
+		}
+
+		// Both composed objects have values - should fail required_alone
+		input := struct {
+			Database DatabaseConfig `validate:"required_alone"`
+			Redis    RedisConfig    `validate:"required_alone"`
+			APIKey   string         `validate:"required_alone"`
+		}{
+			Database: DatabaseConfig{Host: "localhost", Port: 5432},             // has value
+			Redis:    RedisConfig{URL: "redis://localhost", Password: "secret"}, // also has value - violation
+			APIKey:   "",                                                        // empty
+		}
+
+		err := Validate(input)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrValidationFailed)
+		assert.Contains(t, err.Error(), "required_alone")
+		assert.Contains(t, err.Error(), "Database")
+		assert.Contains(t, err.Error(), "Redis")
+	})
+
+	t.Run("invalid - nested composition error contains required_alone validation tag", func(t *testing.T) {
+		type InnerConfig struct {
+			Value string `validate:"required"`
+		}
+
+		type MiddleConfig struct {
+			Inner1 InnerConfig `validate:"required_alone"`
+			Inner2 InnerConfig `validate:"required_alone"`
+		}
+
+		type OuterConfig struct {
+			Middle MiddleConfig `validate:"required_alone"`
+			Direct string       `validate:"required_alone"`
+		}
+
+		// Nested violation: Inner1 and Inner2 both have values
+		input := OuterConfig{
+			Middle: MiddleConfig{
+				Inner1: InnerConfig{Value: "value1"}, // has value
+				Inner2: InnerConfig{Value: "value2"}, // also has value - violation
+			},
+			Direct: "", // empty
+		}
+
+		err := Validate(input)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrValidationFailed)
+		assert.Contains(t, err.Error(), "required_alone")
+		assert.Contains(t, err.Error(), "Inner1")
+		assert.Contains(t, err.Error(), "Inner2")
+	})
+
+	t.Run("invalid - pointer composition error message validation", func(t *testing.T) {
+		type ServiceConfig struct {
+			Name string `validate:"required"`
+		}
+
+		// Mix of pointer and struct fields with required_alone
+		input := struct {
+			PointerService *ServiceConfig `validate:"omitempty,required_alone"`
+			StructService  ServiceConfig  `validate:"required_alone"`
+			PlainField     string         `validate:"required_alone"`
+		}{
+			PointerService: &ServiceConfig{Name: "pointer-service"}, // has value
+			StructService:  ServiceConfig{Name: "struct-service"},   // also has value - violation
+			PlainField:     "",                                      // empty
+		}
+
+		err := Validate(input)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrValidationFailed)
+		assert.Contains(t, err.Error(), "required_alone")
+		assert.Contains(t, err.Error(), "PointerService")
+		assert.Contains(t, err.Error(), "StructService")
+	})
+
+	t.Run("invalid - embedded struct composition error contains validation details", func(t *testing.T) {
+		type Credentials struct {
+			Username string `validate:"required_alone"`
+			Password string `validate:"required_alone"`
+			APIKey   string `validate:"required_alone"`
+		}
+
+		type ServiceConfig struct {
+			Credentials `validate:"required"` // embedded struct
+			Endpoint    string                `validate:"required_alone"`
+		}
+
+		// Embedded struct has multiple required_alone fields with values
+		input := ServiceConfig{
+			Credentials: Credentials{
+				Username: "user",     // has value
+				Password: "password", // also has value - violation within embedded struct
+				APIKey:   "",         // empty
+			},
+			Endpoint: "", // empty
+		}
+
+		err := Validate(input)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrValidationFailed)
+		assert.Contains(t, err.Error(), "required_alone")
+		// Should contain field names from the embedded struct
+		errorMsg := err.Error()
+		assert.True(t,
+			assert.Contains(t, errorMsg, "Username") ||
+				assert.Contains(t, errorMsg, "Password"),
+			"Error message should contain field names: %s", errorMsg)
+	})
 }

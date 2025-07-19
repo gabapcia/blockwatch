@@ -39,6 +39,28 @@ func init() {
 	validator.RegisterValidation("required_alone", requiredAloneValidator)
 }
 
+// StructLevel is an alias to gvalidator.StructLevel, representing the current struct-level context during validation.
+//
+// It provides access to the entire struct instance and methods to report cross-field validation errors.
+type StructLevel = gvalidator.StructLevel
+
+// StructLevelFunc is a function type that defines struct-level validation logic.
+//
+// It receives a StructLevel object which contains the current struct being validated
+// and allows reporting custom validation errors on specific fields.
+type StructLevelFunc = gvalidator.StructLevelFunc
+
+// RegisterStructValidation registers a struct-level validation function for one or more struct types.
+//
+// This is used to implement cross-field or conditional validations that cannot be expressed with simple tags.
+//
+// Parameters:
+//   - fn: the validation function to be executed for the target structs.
+//   - types: one or more struct types (value or pointer) for which the function should be applied.
+func RegisterStructValidation(fn StructLevelFunc, types ...any) {
+	validator.RegisterStructValidation(fn, types...)
+}
+
 // formatError transforms a raw validator error into a structured, human-readable multi-error chain.
 //
 // If the input is a set of validation errors, it returns a combined error with ErrValidationFailed as the root,
