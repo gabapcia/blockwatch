@@ -15,7 +15,7 @@ import (
 
 func init() {
 	// Initialize logger for tests to prevent nil pointer dereference
-	_ = logger.Init("error")
+	_ = logger.Init("test-service", "error")
 }
 
 func TestService_checkpointAndForward(t *testing.T) {

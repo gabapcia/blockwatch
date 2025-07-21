@@ -232,7 +232,7 @@ func TestMapObservedToWalletBlock(t *testing.T) {
 
 func TestHandleWalletActivity(t *testing.T) {
 	// Initialize logger for tests
-	err := logger.Init("error")
+	err := logger.Init("test-service", "error")
 	require.NoError(t, err)
 
 	t.Run("processes single block successfully", func(t *testing.T) {
@@ -525,7 +525,7 @@ func TestHandleWalletActivity(t *testing.T) {
 
 func TestStartHandleWalletActivity(t *testing.T) {
 	// Initialize logger for tests
-	err := logger.Init("error")
+	err := logger.Init("test-service", "error")
 	require.NoError(t, err)
 
 	t.Run("starts goroutine that processes blocks", func(t *testing.T) {

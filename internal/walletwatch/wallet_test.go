@@ -14,7 +14,7 @@ import (
 
 func init() {
 	// Initialize logger for tests to prevent nil pointer dereference
-	_ = logger.Init("error")
+	_ = logger.Init("test-service", "error")
 }
 
 // matchAddresses creates a mock.MatchedBy function that matches slices containing the same addresses

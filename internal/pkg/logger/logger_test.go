@@ -25,35 +25,35 @@ func resetLogger() {
 func TestInit(t *testing.T) {
 	t.Run("successful initialization with valid level", func(t *testing.T) {
 		resetLogger()
-		err := Init("info")
+		err := Init("test-service", "info")
 		require.NoError(t, err)
 		assert.NotNil(t, baseLogger)
 	})
 
 	t.Run("successful initialization with debug level", func(t *testing.T) {
 		resetLogger()
-		err := Init("debug")
+		err := Init("test-service", "debug")
 		require.NoError(t, err)
 		assert.NotNil(t, baseLogger)
 	})
 
 	t.Run("successful initialization with warn level", func(t *testing.T) {
 		resetLogger()
-		err := Init("warn")
+		err := Init("test-service", "warn")
 		require.NoError(t, err)
 		assert.NotNil(t, baseLogger)
 	})
 
 	t.Run("successful initialization with error level", func(t *testing.T) {
 		resetLogger()
-		err := Init("error")
+		err := Init("test-service", "error")
 		require.NoError(t, err)
 		assert.NotNil(t, baseLogger)
 	})
 
 	t.Run("error with invalid level", func(t *testing.T) {
 		resetLogger()
-		err := Init("invalid")
+		err := Init("test-service", "invalid")
 		assert.Error(t, err)
 		assert.Nil(t, baseLogger)
 	})
@@ -62,12 +62,12 @@ func TestInit(t *testing.T) {
 		resetLogger()
 
 		// First initialization
-		err1 := Init("debug")
+		err1 := Init("test-service", "debug")
 		require.NoError(t, err1)
 		firstLogger := baseLogger
 
 		// Second initialization should not change the logger
-		err2 := Init("error")
+		err2 := Init("other-service", "error")
 		require.NoError(t, err2)
 		assert.Equal(t, firstLogger, baseLogger, "Init() should only initialize once")
 	})
@@ -75,7 +75,7 @@ func TestInit(t *testing.T) {
 
 func TestDeriveFromCtx(t *testing.T) {
 	resetLogger()
-	err := Init("debug")
+	err := Init("test-service", "debug")
 	require.NoError(t, err)
 
 	t.Run("derive from context without logger", func(t *testing.T) {
@@ -118,12 +118,12 @@ func TestDeriveFromCtx(t *testing.T) {
 
 func TestDerive(t *testing.T) {
 	resetLogger()
-	err := Init("debug")
+	err := Init("test-service", "debug")
 	require.NoError(t, err)
 
 	t.Run("derive context with key-value pairs", func(t *testing.T) {
 		ctx := t.Context()
-		derivedCtx := Derive(ctx, "key", "value")
+		derivedCtx := Derive(ctx, "test-logger", "key", "value")
 
 		// Check that the derived context contains a logger
 		logger, ok := derivedCtx.Value(ctxKey).(*zap.SugaredLogger)
@@ -133,7 +133,7 @@ func TestDerive(t *testing.T) {
 
 	t.Run("derive context with no key-value pairs", func(t *testing.T) {
 		ctx := t.Context()
-		derivedCtx := Derive(ctx)
+		derivedCtx := Derive(ctx, "test-logger")
 
 		// Check that the derived context contains a logger
 		logger, ok := derivedCtx.Value(ctxKey).(*zap.SugaredLogger)
@@ -143,7 +143,7 @@ func TestDerive(t *testing.T) {
 
 	t.Run("derive context with multiple key-value pairs", func(t *testing.T) {
 		ctx := t.Context()
-		derivedCtx := Derive(ctx, "key1", "value1", "key2", 42)
+		derivedCtx := Derive(ctx, "test-logger", "key1", "value1", "key2", 42)
 
 		// Check that the derived context contains a logger
 		logger, ok := derivedCtx.Value(ctxKey).(*zap.SugaredLogger)
@@ -155,7 +155,7 @@ func TestDerive(t *testing.T) {
 func TestSync(t *testing.T) {
 	t.Run("sync after init", func(t *testing.T) {
 		resetLogger()
-		err := Init("info")
+		err := Init("test-service", "info")
 		require.NoError(t, err)
 
 		// Sync should not panic and may return an error (which is fine for stdout)
@@ -164,22 +164,23 @@ func TestSync(t *testing.T) {
 		})
 	})
 
-	t.Run("sync without init panics", func(t *testing.T) {
+	t.Run("sync without init returns nil", func(t *testing.T) {
 		resetLogger()
 
-		assert.Panics(t, func() {
-			Sync()
-		}, "Sync() should panic when logger is not initialized")
+		assert.NotPanics(t, func() {
+			err := Sync()
+			assert.NoError(t, err)
+		})
 	})
 }
 
 func TestLog(t *testing.T) {
 	resetLogger()
-	err := Init("debug")
+	err := Init("test-service", "debug")
 	require.NoError(t, err)
 
 	t.Run("log with context containing logger", func(t *testing.T) {
-		ctx := Derive(t.Context(), "test", "value")
+		ctx := Derive(t.Context(), "test-logger", "test", "value")
 
 		assert.NotPanics(t, func() {
 			log(ctx, zapcore.InfoLevel, "test message", "key", "value")
@@ -214,7 +215,7 @@ func TestLog(t *testing.T) {
 
 func TestDebug(t *testing.T) {
 	resetLogger()
-	err := Init("debug")
+	err := Init("test-service", "debug")
 	require.NoError(t, err)
 
 	t.Run("debug with message and key-value pairs", func(t *testing.T) {
@@ -232,7 +233,7 @@ func TestDebug(t *testing.T) {
 	})
 
 	t.Run("debug with derived context", func(t *testing.T) {
-		ctx := Derive(t.Context(), "context", "derived")
+		ctx := Derive(t.Context(), "context-logger", "context", "derived")
 		assert.NotPanics(t, func() {
 			Debug(ctx, "debug message", "key", "value")
 		})
@@ -241,7 +242,7 @@ func TestDebug(t *testing.T) {
 
 func TestInfo(t *testing.T) {
 	resetLogger()
-	err := Init("info")
+	err := Init("test-service", "info")
 	require.NoError(t, err)
 
 	t.Run("info with message and key-value pairs", func(t *testing.T) {
@@ -259,7 +260,7 @@ func TestInfo(t *testing.T) {
 	})
 
 	t.Run("info with derived context", func(t *testing.T) {
-		ctx := Derive(t.Context(), "context", "derived")
+		ctx := Derive(t.Context(), "context-logger", "context", "derived")
 		assert.NotPanics(t, func() {
 			Info(ctx, "info message", "key", "value")
 		})
@@ -268,7 +269,7 @@ func TestInfo(t *testing.T) {
 
 func TestWarn(t *testing.T) {
 	resetLogger()
-	err := Init("warn")
+	err := Init("test-service", "warn")
 	require.NoError(t, err)
 
 	t.Run("warn with message and key-value pairs", func(t *testing.T) {
@@ -286,7 +287,7 @@ func TestWarn(t *testing.T) {
 	})
 
 	t.Run("warn with derived context", func(t *testing.T) {
-		ctx := Derive(t.Context(), "context", "derived")
+		ctx := Derive(t.Context(), "context-logger", "context", "derived")
 		assert.NotPanics(t, func() {
 			Warn(ctx, "warn message", "key", "value")
 		})
@@ -295,7 +296,7 @@ func TestWarn(t *testing.T) {
 
 func TestError(t *testing.T) {
 	resetLogger()
-	err := Init("error")
+	err := Init("test-service", "error")
 	require.NoError(t, err)
 
 	t.Run("error with message and key-value pairs", func(t *testing.T) {
@@ -313,7 +314,7 @@ func TestError(t *testing.T) {
 	})
 
 	t.Run("error with derived context", func(t *testing.T) {
-		ctx := Derive(t.Context(), "context", "derived")
+		ctx := Derive(t.Context(), "context-logger", "context", "derived")
 		assert.NotPanics(t, func() {
 			Error(ctx, "error message", "key", "value")
 		})
@@ -322,7 +323,7 @@ func TestError(t *testing.T) {
 
 func TestPanic(t *testing.T) {
 	resetLogger()
-	err := Init("debug")
+	err := Init("test-service", "debug")
 	require.NoError(t, err)
 
 	t.Run("panic with message", func(t *testing.T) {
@@ -340,7 +341,7 @@ func TestPanic(t *testing.T) {
 	})
 
 	t.Run("panic with derived context", func(t *testing.T) {
-		ctx := Derive(t.Context(), "context", "derived")
+		ctx := Derive(t.Context(), "context-logger", "context", "derived")
 		assert.Panics(t, func() {
 			Panic(ctx, "panic message", "key", "value")
 		}, "Panic() should panic")
@@ -352,7 +353,7 @@ func TestFatal(t *testing.T) {
 		// This subprocess will execute the Fatal call.
 		if os.Getenv("TEST_FATAL_SUBPROCESS") == "1" {
 			// initialize logger
-			_ = Init("debug")
+			_ = Init("test-service", "debug")
 			// this will call os.Exit(1)
 			Fatal(context.Background(), "fatal error for test")
 			return
@@ -379,7 +380,7 @@ func TestFatal(t *testing.T) {
 		// This subprocess will execute the Fatal call.
 		if os.Getenv("TEST_FATAL_KV_SUBPROCESS") == "1" {
 			// initialize logger
-			_ = Init("debug")
+			_ = Init("test-service", "debug")
 			// this will call os.Exit(1)
 			Fatal(context.Background(), "fatal error for test", "key", "value")
 			return
@@ -406,8 +407,8 @@ func TestFatal(t *testing.T) {
 		// This subprocess will execute the Fatal call.
 		if os.Getenv("TEST_FATAL_DERIVED_SUBPROCESS") == "1" {
 			// initialize logger
-			_ = Init("debug")
-			ctx := Derive(context.Background(), "context", "derived")
+			_ = Init("test-service", "debug")
+			ctx := Derive(context.Background(), "context-logger", "context", "derived")
 			// this will call os.Exit(1)
 			Fatal(ctx, "fatal error for test", "key", "value")
 			return
@@ -433,7 +434,7 @@ func TestFatal(t *testing.T) {
 
 func TestTraceIntegration(t *testing.T) {
 	resetLogger()
-	err := Init("debug")
+	err := Init("test-service", "debug")
 	require.NoError(t, err)
 
 	t.Run("logging with trace context", func(t *testing.T) {
@@ -455,7 +456,7 @@ func TestTraceIntegration(t *testing.T) {
 		defer span.End()
 
 		// Derive context with trace
-		derivedCtx := Derive(ctx, "derived", "value")
+		derivedCtx := Derive(ctx, "derived-logger", "derived", "value")
 
 		// Test that logging with derived trace context doesn't panic
 		assert.NotPanics(t, func() {
@@ -525,7 +526,7 @@ func TestTraceIntegration(t *testing.T) {
 
 func TestEdgeCases(t *testing.T) {
 	resetLogger()
-	err := Init("debug")
+	err := Init("test-service", "debug")
 	require.NoError(t, err)
 
 	t.Run("nil context values", func(t *testing.T) {
