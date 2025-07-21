@@ -36,7 +36,7 @@ coverage:
 .PHONY: generate-queries
 generate-queries:
 	@docker run --rm -v $$PWD:/src -w /src \
-		sqlc/sqlc --file internal/infra/storage/postgresql/sqlc.yaml generate
+		sqlc/sqlc --file internal/infra/storage/postgresql/internal/sqlc.yaml generate
 
 .PHONY: new-migration
 new-migration:
