@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 )
 
-const deleteMonitoredWalletByAddress = `-- name: DeleteMonitoredWalletByAddress :exec
+const deleteMonitoredWalletByAddress = `-- name: DeleteMonitoredWalletByAddress :execrows
 DELETE FROM "monitored_wallets"
 WHERE "network" = $1 AND "address" = $2
 `
@@ -25,9 +25,12 @@ type DeleteMonitoredWalletByAddressParams struct {
 //
 //	DELETE FROM "monitored_wallets"
 //	WHERE "network" = $1 AND "address" = $2
-func (q *Queries) DeleteMonitoredWalletByAddress(ctx context.Context, arg DeleteMonitoredWalletByAddressParams) error {
-	_, err := q.db.Exec(ctx, deleteMonitoredWalletByAddress, arg.Network, arg.Address)
-	return err
+func (q *Queries) DeleteMonitoredWalletByAddress(ctx context.Context, arg DeleteMonitoredWalletByAddressParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteMonitoredWalletByAddress, arg.Network, arg.Address)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const insertMonitoredWallet = `-- name: InsertMonitoredWallet :exec
