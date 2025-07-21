@@ -37,8 +37,8 @@ type InlineConfig struct {
 type Picker struct {
 	// Engine indicates which globally defined storage engine to use.
 	// Accepted values: "REDIS", "POSTGRESQL".
-	Engine string `env:"ENGINE" validate:"omitempty,oneof=REDIS POSTGRESQL"`
+	Engine string `env:"ENGINE" validate:"required_without=InlineConfig,excluded_with=InlineConfig,omitempty,oneof=REDIS POSTGRESQL"`
 
-	// Config provides an inline configuration for use-case-specific connection setup.
-	Config InlineConfig `env:", prefix=CONFIG_" validate:"required_without=Engine,excluded_with=Engine"`
+	// InlineConfig provides an inline configuration for use-case-specific connection setup.
+	InlineConfig `env:", prefix=CONFIG_" validate:"required_without=Engine,excluded_with=Engine"`
 }
