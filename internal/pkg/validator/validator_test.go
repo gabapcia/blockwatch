@@ -331,3 +331,43 @@ func TestValidate(t *testing.T) {
 		assert.Contains(t, err.Error(), "'Priority.Level': value 'urgent' does not meet the requirements for the 'oneof' validation")
 	})
 }
+
+func TestRegisterStructValidation(t *testing.T) {
+	type TestStruct struct {
+		Password        string `validate:"required"`
+		ConfirmPassword string `validate:"required"`
+	}
+
+	t.Run("should register and execute struct validation", func(t *testing.T) {
+		// Define a validation function that checks password confirmation
+		passwordValidator := func(sl StructLevel) {
+			user := sl.Current().Interface().(TestStruct)
+			if user.Password != user.ConfirmPassword {
+				sl.ReportError(user.ConfirmPassword, "ConfirmPassword", "ConfirmPassword", "eqfield", "Password")
+			}
+		}
+
+		// Register the validation
+		RegisterStructValidation(passwordValidator, TestStruct{})
+
+		// Test valid case - passwords match
+		validStruct := TestStruct{
+			Password:        "secret123",
+			ConfirmPassword: "secret123",
+		}
+
+		err := Validate(validStruct)
+		assert.NoError(t, err)
+
+		// Test invalid case - passwords don't match
+		invalidStruct := TestStruct{
+			Password:        "secret123",
+			ConfirmPassword: "different",
+		}
+
+		err = Validate(invalidStruct)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrValidationFailed)
+		assert.Contains(t, err.Error(), "'TestStruct.ConfirmPassword': value 'different' does not meet the requirements for the 'eqfield' validation")
+	})
+}
