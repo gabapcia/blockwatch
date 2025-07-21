@@ -7,7 +7,7 @@ package chainstream
 import (
 	"context"
 
-	"github.com/gabapcia/blockwatch/internal/pkg/types"
+	"github.com/gabapcia/blockwatch/internal/pkg/x/types"
 	mock "github.com/stretchr/testify/mock"
 )
 

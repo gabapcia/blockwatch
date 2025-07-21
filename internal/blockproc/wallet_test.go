@@ -12,7 +12,7 @@ import (
 
 	"github.com/gabapcia/blockwatch/internal/chainstream"
 	"github.com/gabapcia/blockwatch/internal/pkg/logger"
-	"github.com/gabapcia/blockwatch/internal/pkg/types"
+	"github.com/gabapcia/blockwatch/internal/pkg/x/types"
 	"github.com/gabapcia/blockwatch/internal/walletwatch"
 	walletwatchtest "github.com/gabapcia/blockwatch/internal/walletwatch/mocks"
 )

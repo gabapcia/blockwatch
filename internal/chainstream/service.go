@@ -5,8 +5,8 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/gabapcia/blockwatch/internal/pkg/flow/chflow"
 	"github.com/gabapcia/blockwatch/internal/pkg/resilience/retry"
+	"github.com/gabapcia/blockwatch/internal/pkg/x/chflow"
 )
 
 // ErrServiceAlreadyStarted is returned when Start is called on a Service

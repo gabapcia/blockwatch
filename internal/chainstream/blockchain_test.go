@@ -7,7 +7,7 @@ import (
 	"time"
 
 	retrytest "github.com/gabapcia/blockwatch/internal/pkg/resilience/retry/mocks"
-	"github.com/gabapcia/blockwatch/internal/pkg/types"
+	"github.com/gabapcia/blockwatch/internal/pkg/x/types"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"

@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/gabapcia/blockwatch/internal/pkg/logger"
-	"github.com/gabapcia/blockwatch/internal/pkg/types"
+	"github.com/gabapcia/blockwatch/internal/pkg/x/types"
 )
 
 // TransactionNotifier defines a mechanism for notifying external systems

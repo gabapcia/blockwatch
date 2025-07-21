@@ -1,6 +1,6 @@
 package walletwatch
 
-import "github.com/gabapcia/blockwatch/internal/pkg/types"
+import "github.com/gabapcia/blockwatch/internal/pkg/x/types"
 
 // Transaction represents a basic blockchain transaction,
 // including its hash, sender address, and recipient address.

@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/gabapcia/blockwatch/internal/chainstream"
-	"github.com/gabapcia/blockwatch/internal/pkg/flow/chflow"
 	"github.com/gabapcia/blockwatch/internal/pkg/logger"
+	"github.com/gabapcia/blockwatch/internal/pkg/x/chflow"
 	"github.com/gabapcia/blockwatch/internal/walletwatch"
 )
 

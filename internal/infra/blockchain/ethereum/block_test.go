@@ -10,7 +10,7 @@ import (
 
 	"github.com/gabapcia/blockwatch/internal/chainstream"
 	jsonrpctest "github.com/gabapcia/blockwatch/internal/pkg/transport/jsonrpc/mocks"
-	"github.com/gabapcia/blockwatch/internal/pkg/types"
+	"github.com/gabapcia/blockwatch/internal/pkg/x/types"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"

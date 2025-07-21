@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/gabapcia/blockwatch/internal/chainstream"
-	"github.com/gabapcia/blockwatch/internal/pkg/types"
+	"github.com/gabapcia/blockwatch/internal/pkg/x/types"
 
 	"github.com/google/uuid"
 	"github.com/rabbitmq/amqp091-go"

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/gabapcia/blockwatch/internal/chainstream"
-	"github.com/gabapcia/blockwatch/internal/pkg/types"
+	"github.com/gabapcia/blockwatch/internal/pkg/x/types"
 )
 
 const (

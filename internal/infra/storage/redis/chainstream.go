@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/gabapcia/blockwatch/internal/chainstream"
-	"github.com/gabapcia/blockwatch/internal/pkg/types"
+	"github.com/gabapcia/blockwatch/internal/pkg/x/types"
 
 	"github.com/redis/go-redis/v9"
 )

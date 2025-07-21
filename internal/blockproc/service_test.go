@@ -7,7 +7,7 @@ import (
 
 	"github.com/gabapcia/blockwatch/internal/chainstream"
 	chainstreamMocks "github.com/gabapcia/blockwatch/internal/chainstream/mocks"
-	"github.com/gabapcia/blockwatch/internal/pkg/types"
+	"github.com/gabapcia/blockwatch/internal/pkg/x/types"
 	"github.com/gabapcia/blockwatch/internal/walletwatch"
 	walletwatchMocks "github.com/gabapcia/blockwatch/internal/walletwatch/mocks"
 	"github.com/stretchr/testify/assert"

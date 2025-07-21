@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gabapcia/blockwatch/internal/pkg/types"
+	"github.com/gabapcia/blockwatch/internal/pkg/x/types"
 
 	"github.com/stretchr/testify/assert"
 	mock "github.com/stretchr/testify/mock"
