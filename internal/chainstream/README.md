@@ -22,7 +22,7 @@ ChainStream is a streaming service that subscribes to blockchain networks and em
 │                    Event Processing                         │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐ │
 │  │  Subscription   │  │   Dispatch      │  │   Failure    │ │
-│  │   Manager       │  │   Handler       │  │   Handler    │ │
+│  │   Manager       │  │   Notifier      │  │   Handler    │ │
 │  └─────────────────┘  └─────────────────┘  └──────────────┘ │
 ├─────────────────────────────────────────────────────────────┤
 │                     Output Stream                           │
@@ -39,6 +39,7 @@ ChainStream is a streaming service that subscribes to blockchain networks and em
 ```go
 type Service interface {
     // Start begins the block observation process and returns a channel of observed blocks
+    // Returns ErrServiceAlreadyStarted if called more than once
     Start(ctx context.Context) (<-chan ObservedBlock, error)
     
     // Close terminates all background processes and cleans up resources
@@ -68,7 +69,20 @@ type CheckpointStorage interface {
     SaveCheckpoint(ctx context.Context, network string, height types.Hex) error
     
     // LoadLatestCheckpoint retrieves the last saved checkpoint for a network
+    // Returns ErrNoCheckpointFound if no checkpoint exists for the network
     LoadLatestCheckpoint(ctx context.Context, network string) (types.Hex, error)
+}
+```
+
+### DispatchFailureNotifier Interface
+Interface for handling unrecoverable dispatch failures:
+
+```go
+type DispatchFailureNotifier interface {
+    // NotifyDispatchFailure is called when a dispatch failure occurs that cannot be recovered
+    // It receives contextual information and the failure details
+    // If an error is returned, it will be logged by the service
+    NotifyDispatchFailure(ctx context.Context, failure BlockDispatchFailure) error
 }
 ```
 
@@ -95,6 +109,17 @@ type Block struct {
 }
 ```
 
+### Transaction
+Represents a blockchain transaction:
+
+```go
+type Transaction struct {
+    Hash string // Unique transaction hash identifier
+    From string // Sender address
+    To   string // Recipient address
+}
+```
+
 ### BlockchainEvent
 Events emitted by blockchain implementations:
 
@@ -104,6 +129,34 @@ type BlockchainEvent struct {
     Block  Block     // Block data (empty if Err is set)
     Err    error     // Error if block retrieval failed
 }
+```
+
+### BlockDispatchFailure
+Represents failures in block processing:
+
+```go
+type BlockDispatchFailure struct {
+    Network string    // Network where failure occurred
+    Height  types.Hex // Block height that failed
+    Errors  []error   // All errors encountered (including retries)
+}
+```
+
+## Error Constants
+
+The package defines several error constants for different failure scenarios:
+
+```go
+// ErrServiceAlreadyStarted is returned when Start is called on a Service
+// that has already been started. A Service instance must not be started more than once.
+var ErrServiceAlreadyStarted = errors.New("service already started")
+
+// ErrNoCheckpointFound is returned by LoadLatestCheckpoint when no checkpoint
+// has been saved yet for the requested network.
+var ErrNoCheckpointFound = errors.New("no checkpoint found for network")
+
+// ErrNetworkNotRegistered is returned when attempting to operate on an unregistered network.
+var ErrNetworkNotRegistered = errors.New("network not registered")
 ```
 
 ## How It Works
@@ -120,16 +173,15 @@ service := chainstream.New(networks, options...)
 2. **Subscription Setup**: Start streaming from the next block after the checkpoint
 3. **Event Processing**: Handle incoming blockchain events:
    - **Success**: Convert to `ObservedBlock` and send for checkpointing
-   - **Failure**: Send to retry system (if configured) or failure handler
+   - **Failure**: Send to retry system (if configured) or failure notifier
 4. **Retry Logic**: Attempt to recover failed block fetches
 5. **Checkpointing**: Save progress for successful blocks
 6. **Output Delivery**: Emit the `ObservedBlock` to the output channel
 
-
 ### 3. Output Stream
 The service provides a unified stream of `ObservedBlock` data from all monitored networks.
 
-### 5. Workflow Diagram
+### 4. Workflow Diagram
 
 Below is a detailed Mermaid diagram illustrating the workflow of the chainstream package, focusing on the process of subscribing to blockchain networks, processing blocks, handling errors, and delivering data to consumers.
 
@@ -162,8 +214,8 @@ graph TD
         O --> P{"Was the block successfully re-fetched?"};
         P -- yes --> J;
         P -- no --> M;
-        M --> Q["A goroutine invokes the user's handler<br/>(handleDispatchFailures)"];
-        Q --> R["User-defined dispatchFailureHandler is executed"];
+        M --> Q["A goroutine invokes the notifier<br/>(handleDispatchFailures)"];
+        Q --> R["DispatchFailureNotifier.NotifyDispatchFailure is executed"];
     end
 
     subgraph "Final Processing"
@@ -181,7 +233,7 @@ This diagram provides a detailed overview of the chainstream package workflow:
 - **Service Initialization**: The service is started, checks if it's already running, and initializes the necessary channels.
 - **Network Subscription**: For each network, it loads the last checkpoint and subscribes to the blockchain to receive a channel of events.
 - **Event Dispatching**: Events are dispatched based on whether they contain an error. Successful events go to the processing channel, while errors are routed for handling.
-- **Error Handling**: Errors are routed through an optional retry mechanism. If retries fail or are disabled, the error is passed to a user-defined failure handler.
+- **Error Handling**: Errors are routed through an optional retry mechanism. If retries fail or are disabled, the error is passed to a user-defined failure notifier.
 - **Final Processing**: Successfully fetched blocks are checkpointed and sent to the final output channel.
 - **Service Shutdown**: The `Close()` method gracefully shuts down all background processes and closes channels.
 
@@ -214,10 +266,18 @@ for block := range blocksCh {
 }
 ```
 
-
 ### Advanced Configuration
 
 ```go
+// Custom dispatch failure notifier implementation
+type customNotifier struct{}
+
+func (c customNotifier) NotifyDispatchFailure(ctx context.Context, failure chainstream.BlockDispatchFailure) error {
+    log.Printf("Persistent failure: network=%s height=%s errors=%v", 
+        failure.Network, failure.Height, failure.Errors)
+    return nil
+}
+
 // Standard service with advanced options
 service := chainstream.New(networks,
     // Configure retry strategy
@@ -226,13 +286,9 @@ service := chainstream.New(networks,
     // Enable checkpoint persistence
     chainstream.WithCheckpointStorage(storage),
     
-    // Custom failure handler
-    chainstream.WithDispatchFailureHandler(func(ctx context.Context, failure chainstream.BlockDispatchFailure) {
-        log.Printf("Persistent failure: network=%s height=%s errors=%v", 
-            failure.Network, failure.Height, failure.Errors)
-    }),
+    // Custom failure notifier
+    chainstream.WithDispatchFailureNotifier(customNotifier{}),
 )
-
 ```
 
 ## Configuration Options
@@ -249,32 +305,48 @@ Enable checkpoint persistence to resume from last processed block:
 chainstream.WithCheckpointStorage(storage)
 ```
 
-### WithDispatchFailureHandler
-Set custom handler for unrecoverable failures:
+### WithDispatchFailureNotifier
+Set custom notifier for unrecoverable failures:
 ```go
-chainstream.WithDispatchFailureHandler(handler)
+chainstream.WithDispatchFailureNotifier(notifier)
 ```
 
 ## Error Handling
 
-### BlockDispatchFailure
-Represents failures in block processing:
-
-```go
-type BlockDispatchFailure struct {
-    Network string    // Network where failure occurred
-    Height  types.Hex // Block height that failed
-    Errors  []error   // All errors encountered (including retries)
-}
-```
-
 ### Error Flow
 1. **Transient Errors**: Sent to retry system (if configured)
-2. **Persistent Errors**: Sent to dispatch failure handler
+2. **Persistent Errors**: Sent to dispatch failure notifier
 3. **Critical Errors**: Service startup failures returned immediately
 
-## Features
+### Default Implementations
 
+The package provides default implementations for optional components:
+
+#### Default Checkpoint Storage
+```go
+// nopCheckpoint is a no-op implementation that disables checkpointing
+type nopCheckpoint struct{}
+```
+
+#### Default Dispatch Failure Notifier
+```go
+// logDispatchFailureNotifier logs failures using the application's logger
+type logDispatchFailureNotifier struct{}
+```
+
+## Internal Configuration
+
+The service uses buffered channels with predefined sizes for optimal performance:
+
+```go
+const (
+    dispatchFailureChannelBufferSize = 5  // Buffer size for dispatch failure events
+    retryFailureChannelBufferSize    = 5  // Buffer size for failures retried by retry logic
+    observedBlockChannelBufferSize   = 10 // Buffer size for final successfully observed blocks
+)
+```
+
+## Features
 
 ### Resilience
 - **Retry Logic**: Configurable retry strategies for transient failures
@@ -285,7 +357,7 @@ type BlockDispatchFailure struct {
 - **Concurrent Processing**: Each network runs independently
 - **Buffered Channels**: Configurable buffer sizes for optimal throughput
 - **Resource Management**: Proper cleanup and resource management
-- **Asynchronous Transformation**: Non-blocking data transformation pipeline
+- **Asynchronous Processing**: Non-blocking data transformation pipeline
 
 ### Reliability
 - **Checkpoint System**: Resume from last processed block after restarts
@@ -295,7 +367,7 @@ type BlockDispatchFailure struct {
 ## Thread Safety
 
 The service is designed to be thread-safe:
-- **Single Start**: Service can only be started once
+- **Single Start**: Service can only be started once (returns `ErrServiceAlreadyStarted`)
 - **Concurrent Access**: Safe to call `Close()` from any goroutine
 - **Channel Safety**: All internal channels are properly synchronized
 
@@ -305,6 +377,7 @@ The package has minimal external dependencies:
 - **Blockchain Implementations**: Must implement the `Blockchain` interface
 - **Retry Strategy**: Optional, must implement `retry.Retry` interface
 - **Checkpoint Storage**: Optional, must implement `CheckpointStorage` interface
+- **Dispatch Failure Notifier**: Optional, must implement `DispatchFailureNotifier` interface
 - **Context**: Standard Go context for cancellation and timeouts
 
 ## Integration
