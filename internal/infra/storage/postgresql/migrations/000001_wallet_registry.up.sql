@@ -24,11 +24,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+COMMENT ON FUNCTION enforce_uppercase_network() IS 'Ensures the "network" field is always stored in uppercase letters';
+
 -- Attach the trigger to the monitored_wallets table
 CREATE TRIGGER trg_uppercase_network
 BEFORE INSERT OR UPDATE ON "monitored_wallets"
 FOR EACH ROW
 EXECUTE FUNCTION enforce_uppercase_network();
 
--- Add comment to the trigger function
 COMMENT ON FUNCTION enforce_uppercase_network() IS 'Ensures the "network" field is always stored in uppercase letters';
