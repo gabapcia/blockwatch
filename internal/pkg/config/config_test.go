@@ -712,7 +712,7 @@ func TestConfig_Config(t *testing.T) {
 	t.Run("successful loading with all required fields", func(t *testing.T) {
 		// Set up all required environment variables
 		t.Setenv("LOG_LEVEL", "DEBUG")
-		t.Setenv("TELEMETRY_SERVICE_NAME", "test-service")
+		t.Setenv("SERVICE_NAME", "test-service")
 
 		// WalletRegistry required fields (using global engine)
 		t.Setenv("WALLETREGISTRY_WALLET_STORAGE_ENGINE", "REDIS")
@@ -738,8 +738,8 @@ func TestConfig_Config(t *testing.T) {
 		// Verify Log configuration
 		assert.Equal(t, "DEBUG", config.Log.Level)
 
-		// Verify Telemetry configuration
-		assert.Equal(t, "test-service", config.Telemetry.ServiceName)
+		// Verify ServiceName configuration
+		assert.Equal(t, "test-service", config.ServiceName)
 
 		// Verify Engines configuration
 		require.NotNil(t, config.Engines.Storage.Redis)
@@ -789,8 +789,8 @@ func TestConfig_Config(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify default values
-		assert.Equal(t, "INFO", config.Log.Level)                   // Default value
-		assert.Equal(t, "blockwatch", config.Telemetry.ServiceName) // Default value
+		assert.Equal(t, "INFO", config.Log.Level)         // Default value
+		assert.Equal(t, "blockwatch", config.ServiceName) // Default value
 
 		// Verify no engines were configured globally (using inline configs)
 		assert.Nil(t, config.Engines.Storage.Redis)
@@ -832,7 +832,7 @@ func TestConfig_Config(t *testing.T) {
 
 	t.Run("validation fails with empty service name", func(t *testing.T) {
 		// Set empty service name
-		t.Setenv("TELEMETRY_SERVICE_NAME", "")
+		t.Setenv("SERVICE_NAME", "")
 
 		// Set other required fields (using inline configs)
 		t.Setenv("WALLETREGISTRY_WALLET_STORAGE_REDIS_ADDRESS", "localhost:6379")
@@ -844,7 +844,7 @@ func TestConfig_Config(t *testing.T) {
 		ctx := t.Context()
 		_, err := Load(ctx)
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "Telemetry")
+		assert.Contains(t, err.Error(), "ServiceName")
 	})
 
 	t.Run("validation fails with missing walletregistry configuration", func(t *testing.T) {

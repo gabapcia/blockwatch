@@ -1,3 +1,8 @@
+// Package config provides the centralized application configuration layer.
+//
+// It loads and validates configuration from environment variables using the
+// github.com/sethvargo/go-envconfig library, and supports advanced validation
+// for engine references across use cases.
 package config
 
 import (
@@ -13,37 +18,36 @@ import (
 )
 
 func init() {
-	// Register the custom struct-level validator for the Config struct.
-	// This ensures validation logic beyond simple field tags.
+	// Register the custom struct-level validation for Config.
 	validator.RegisterStructValidation(validateConfigStruct, Config{}, &Config{})
 }
 
-// validateConfigStruct performs cross-field validation for the Config struct.
-// It ensures that when storage.Picker or messaging.Picker fields have an Engine specified,
-// the corresponding engine is not nil in the Engines struct.
+// validateConfigStruct performs cross-field validation on Config.
+//
+// It checks that whenever a storage.Picker or messaging.Picker specifies an engine,
+// the referenced engine is defined and configured in the Engines block.
 func validateConfigStruct(sl validator.StructLevel) {
 	var config Config
 
-	// Normalize the struct: support both Config and *Config types.
 	switch v := sl.Current().Interface().(type) {
 	case Config:
 		config = v
 	case *Config:
 		if v == nil {
-			return // nil pointer, nothing to validate
+			return
 		}
 
 		config = *v
 	default:
-		return // unsupported type
+		return
 	}
 
-	// Validate all storage.Picker and messaging.Picker fields in the config
 	validatePickersInStruct(sl, reflect.ValueOf(config), config.Engines)
 }
 
-// validatePickersInStruct recursively validates all storage.Picker and messaging.Picker fields
-// in a struct to ensure their Engine references point to non-nil engines in the Engines struct.
+// validatePickersInStruct recursively checks fields of type storage.Picker and messaging.Picker.
+//
+// For each picker, it verifies that the referenced engine is defined in the Engines struct.
 func validatePickersInStruct(sl validator.StructLevel, structValue reflect.Value, engines Engines) {
 	structType := structValue.Type()
 
@@ -51,7 +55,6 @@ func validatePickersInStruct(sl validator.StructLevel, structValue reflect.Value
 		field := structValue.Field(i)
 		fieldType := structType.Field(i)
 
-		// Skip unexported fields
 		if !field.CanInterface() {
 			continue
 		}
@@ -74,7 +77,6 @@ func validatePickersInStruct(sl validator.StructLevel, structValue reflect.Value
 			}
 
 		default:
-			// If it's a struct, recursively check its fields
 			if field.Kind() == reflect.Struct {
 				validatePickersInStruct(sl, field, engines)
 			}
@@ -82,11 +84,10 @@ func validatePickersInStruct(sl validator.StructLevel, structValue reflect.Value
 	}
 }
 
-// validateStoragePicker validates a storage.Picker to ensure that if Engine is specified,
-// the corresponding engine is not nil in the storage.Engines struct.
+// validateStoragePicker checks that the given storage.Picker references a configured engine.
 func validateStoragePicker(sl validator.StructLevel, picker storage.Picker, engines storage.Engines, fieldName string) {
 	if picker.Engine == "" {
-		return // No engine specified, nothing to validate
+		return
 	}
 
 	switch picker.Engine {
@@ -103,11 +104,10 @@ func validateStoragePicker(sl validator.StructLevel, picker storage.Picker, engi
 	}
 }
 
-// validateMessagingPicker validates a messaging.Picker to ensure that if Engine is specified,
-// the corresponding engine is not nil in the messaging.Engines struct.
+// validateMessagingPicker checks that the given messaging.Picker references a configured engine.
 func validateMessagingPicker(sl validator.StructLevel, picker messaging.Picker, engines messaging.Engines, fieldName string) {
 	if picker.Engine == "" {
-		return // No engine specified, nothing to validate
+		return
 	}
 
 	switch picker.Engine {
@@ -124,31 +124,31 @@ func validateMessagingPicker(sl validator.StructLevel, picker messaging.Picker, 
 	}
 }
 
-// Engines defines globally shared engine configurations for storage and messaging backends.
+// Engines defines globally shared engine configurations for storage and messaging.
 type Engines struct {
-	// Storage holds global storage backend configurations (e.g., Redis, PostgreSQL).
+	// Storage holds backend options for database persistence (e.g., Redis, PostgreSQL).
 	Storage storage.Engines `env:", prefix=STORAGE_" validate:"omitempty"`
 
-	// Messaging holds global messaging backend configurations (e.g., Redis Streams, RabbitMQ).
+	// Messaging holds backend options for message passing (e.g., Redis Streams, RabbitMQ).
 	Messaging messaging.Engines `env:", prefix=MESSAGING_" validate:"omitempty"`
 }
 
-// Config represents the full application configuration, including logging, telemetry,
-// global engine definitions, and per-use-case settings.
+// Config aggregates the top-level configuration for the entire application.
 type Config struct {
-	Log       pkg.Logger    `env:", prefix=LOG_" validate:"required"`       // Log defines the logging configuration for the application.
-	Telemetry pkg.Telemetry `env:", prefix=TELEMETRY_" validate:"required"` // Telemetry defines the telemetry and service identity configuration.
+	ServiceName string     `env:"SERVICE_NAME, default=blockwatch" validate:"required"` // The service name for logging, metrics, etc.
+	Log         pkg.Logger `env:", prefix=LOG_" validate:"required"`                    // Logging configuration for the service.
 
-	Engines Engines `env:", prefix=ENGINES_" validate:"omitempty"` // Engines holds the globally defined storage and messaging engine configurations.
+	Engines Engines `env:", prefix=ENGINES_" validate:"omitempty"` // Engines contains globally available backends (databases, brokers).
 
-	Walletregistry WalletRegistry `env:", prefix=WALLETREGISTRY_" validate:"required"` // Walletregistry contains the configuration for the wallet registry use case.
-	Walletwatch    WalletWatch    `env:", prefix=WALLETWATCH_" validate:"required"`    // Walletwatch contains the configuration for the wallet transaction watcher use case.
-	Chainstream    ChainStream    `env:", prefix=CHAINSTREAM_" validate:"required"`    // Chainstream contains the configuration for the chainstream use case.
+	Walletregistry WalletRegistry `env:", prefix=WALLETREGISTRY_" validate:"required"` // Walletregistry defines configuration for the wallet registry use case.
+	Walletwatch    WalletWatch    `env:", prefix=WALLETWATCH_" validate:"required"`    // Walletwatch defines configuration for the wallet transaction watch use case.
+	Chainstream    ChainStream    `env:", prefix=CHAINSTREAM_" validate:"required"`    // Chainstream defines configuration for the chainstream processing use case.
 }
 
-// process loads environment variables into the provided config struct using envconfig.
+// process loads environment variables into the given configuration target.
 //
-// This internal helper enables reusability for custom bootstrapping.
+// It skips automatic field initialization (DefaultNoInit = true), enabling zero-value
+// struct checks and stricter validation downstream.
 func process(ctx context.Context, cfg any) error {
 	return envconfig.ProcessWith(ctx, &envconfig.Config{
 		Target:        cfg,
@@ -156,24 +156,19 @@ func process(ctx context.Context, cfg any) error {
 	})
 }
 
-// validate runs validation logic on the provided config struct.
-//
-// It ensures all validation tags are satisfied using the application's shared validator.
+// validate runs field and struct-level validations using the shared validator.
 func validate(cfg any) error {
 	return validator.Validate(cfg)
 }
 
-// Load reads the application configuration from environment variables,
-// applies defaults, and validates all fields.
+// Load loads and validates the entire application configuration.
 //
-// This is the main entry point for loading configuration at application startup.
-//
-// Parameters:
-//   - ctx: context for cancellation.
+// It reads from environment variables, applies default values, and enforces
+// custom validation logic (e.g., engine dependencies).
 //
 // Returns:
-//   - A fully populated and validated Config struct.
-//   - An error if processing or validation fails.
+//   - A fully populated Config instance
+//   - An error if any environment value is missing or invalid
 func Load(ctx context.Context) (config Config, err error) {
 	if err = process(ctx, &config); err != nil {
 		return
