@@ -36,15 +36,15 @@ coverage:
 .PHONY: generate-queries
 generate-queries:
 	@docker run --rm -v $$PWD:/src -w /src \
-		sqlc/sqlc --file internal/infra/storage/postgresql/internal/sqlc.yaml generate
+		sqlc/sqlc --file internal/infra/storage/postgresql/sqlc.yaml generate
 
 .PHONY: new-migration
 new-migration:
 	@read -p 'Migration name: ' MIGRATION_NAME; \
-	docker run --rm -v $$PWD/internal/infra/storage/postgresql/internal/migrations:/migrations --network host \
+	docker run --rm -v $$PWD/internal/infra/storage/postgresql/migrations:/migrations --network host \
 		migrate/migrate create -ext sql -dir /migrations -seq $$MIGRATION_NAME
 
 .PHONY: apply-migrations
 apply-migrations:
-	@docker run --rm -v $$PWD/internal/infra/storage/postgresql/internal/migrations:/migrations --network host \
+	@docker run --rm -v $$PWD/internal/infra/storage/postgresql/migrations:/migrations --network host \
 		migrate/migrate -path=/migrations/ -database $${POSTGRESQL_DSN:-postgres://blockwatch:blockwatch@localhost:5432/blockwatch?sslmode=disable} up
