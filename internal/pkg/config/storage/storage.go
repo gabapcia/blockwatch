@@ -40,5 +40,5 @@ type Picker struct {
 	Engine string `env:"ENGINE" validate:"required_without=InlineConfig,excluded_with=InlineConfig,omitempty,oneof=REDIS POSTGRESQL"`
 
 	// InlineConfig provides an inline configuration for use-case-specific connection setup.
-	InlineConfig `env:", prefix=CONFIG_" validate:"required_without=Engine,excluded_with=Engine"`
+	InlineConfig `validate:"required_without=Engine,excluded_with=Engine"`
 }
