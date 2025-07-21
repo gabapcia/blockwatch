@@ -10,6 +10,7 @@ import (
 	"github.com/gabapcia/blockwatch/internal/pkg/types"
 
 	"github.com/stretchr/testify/assert"
+	mock "github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,13 +20,19 @@ func TestService_handleDispatchFailures(t *testing.T) {
 		var handlerCalls []BlockDispatchFailure
 		var mu sync.Mutex
 
-		// Create service with custom handler
-		svc := &service{
-			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
+		// Create mock notifier
+		mockNotifier := NewDispatchFailureNotifierMock(t)
+		mockNotifier.EXPECT().NotifyDispatchFailure(mock.Anything, mock.Anything).RunAndReturn(
+			func(ctx context.Context, failure BlockDispatchFailure) error {
 				mu.Lock()
 				defer mu.Unlock()
-				handlerCalls = append(handlerCalls, dispatchFailure)
-			},
+				handlerCalls = append(handlerCalls, failure)
+				return nil
+			}).Times(3)
+
+		// Create service with custom notifier
+		svc := &service{
+			dispatchFailureNotifier: mockNotifier,
 		}
 
 		// Create channel and context
@@ -94,10 +101,10 @@ func TestService_handleDispatchFailures(t *testing.T) {
 		assert.Equal(t, "network error 3", handlerCalls[2].Errors[0].Error())
 	})
 
-	t.Run("ignores failures when no handler is set", func(t *testing.T) {
-		// Create service with no handler
+	t.Run("handles failures with default notifier", func(t *testing.T) {
+		// Create service with default notifier (logDispatchFailureNotifier)
 		svc := &service{
-			dispatchFailureHandler: nil,
+			dispatchFailureNotifier: logDispatchFailureNotifier{},
 		}
 
 		// Create channel and context
@@ -136,7 +143,7 @@ func TestService_handleDispatchFailures(t *testing.T) {
 		}
 
 		// Function should complete without panicking or blocking
-		// No assertions needed since we're just verifying it doesn't crash
+		// The default notifier will log the failures (no assertions needed)
 	})
 
 	t.Run("returns when context is canceled", func(t *testing.T) {
@@ -144,13 +151,19 @@ func TestService_handleDispatchFailures(t *testing.T) {
 		var handlerCalls []BlockDispatchFailure
 		var mu sync.Mutex
 
-		// Create service with custom handler
-		svc := &service{
-			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
+		// Create mock notifier
+		mockNotifier := NewDispatchFailureNotifierMock(t)
+		mockNotifier.EXPECT().NotifyDispatchFailure(mock.Anything, mock.Anything).RunAndReturn(
+			func(ctx context.Context, failure BlockDispatchFailure) error {
 				mu.Lock()
 				defer mu.Unlock()
-				handlerCalls = append(handlerCalls, dispatchFailure)
-			},
+				handlerCalls = append(handlerCalls, failure)
+				return nil
+			}).Once()
+
+		// Create service with custom notifier
+		svc := &service{
+			dispatchFailureNotifier: mockNotifier,
 		}
 
 		// Create channel and cancelable context
@@ -195,11 +208,12 @@ func TestService_handleDispatchFailures(t *testing.T) {
 	})
 
 	t.Run("returns when channel is closed", func(t *testing.T) {
-		// Create service with handler
+		// Create mock notifier
+		mockNotifier := NewDispatchFailureNotifierMock(t)
+
+		// Create service with notifier
 		svc := &service{
-			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
-				// Handler implementation doesn't matter for this test
-			},
+			dispatchFailureNotifier: mockNotifier,
 		}
 
 		// Create channel and context
@@ -226,11 +240,12 @@ func TestService_handleDispatchFailures(t *testing.T) {
 	})
 
 	t.Run("handles empty channel gracefully", func(t *testing.T) {
-		// Create service with handler
+		// Create mock notifier that should not be called
+		mockNotifier := NewDispatchFailureNotifierMock(t)
+
+		// Create service with notifier
 		svc := &service{
-			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
-				t.Fatal("Handler should not be called for empty channel")
-			},
+			dispatchFailureNotifier: mockNotifier,
 		}
 
 		// Create empty channel and context
@@ -266,13 +281,19 @@ func TestService_handleDispatchFailures(t *testing.T) {
 		type testKeyType struct{}
 		var testKey testKeyType
 
-		// Create service with custom handler that captures context
-		svc := &service{
-			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
+		// Create mock notifier that captures context
+		mockNotifier := NewDispatchFailureNotifierMock(t)
+		mockNotifier.EXPECT().NotifyDispatchFailure(mock.Anything, mock.Anything).RunAndReturn(
+			func(ctx context.Context, failure BlockDispatchFailure) error {
 				mu.Lock()
 				defer mu.Unlock()
 				receivedCtx = ctx
-			},
+				return nil
+			}).Once()
+
+		// Create service with custom notifier
+		svc := &service{
+			dispatchFailureNotifier: mockNotifier,
 		}
 
 		// Create channel and context with a value
@@ -315,13 +336,19 @@ func TestService_handleDispatchFailures(t *testing.T) {
 		var handlerCalls []string
 		var mu sync.Mutex
 
-		// Create service with custom handler that tracks order
-		svc := &service{
-			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
+		// Create mock notifier that tracks order
+		mockNotifier := NewDispatchFailureNotifierMock(t)
+		mockNotifier.EXPECT().NotifyDispatchFailure(mock.Anything, mock.Anything).RunAndReturn(
+			func(ctx context.Context, failure BlockDispatchFailure) error {
 				mu.Lock()
 				defer mu.Unlock()
-				handlerCalls = append(handlerCalls, dispatchFailure.Network+"-"+string(dispatchFailure.Height))
-			},
+				handlerCalls = append(handlerCalls, failure.Network+"-"+string(failure.Height))
+				return nil
+			}).Times(5)
+
+		// Create service with custom notifier
+		svc := &service{
+			dispatchFailureNotifier: mockNotifier,
 		}
 
 		// Create channel and context
@@ -371,11 +398,16 @@ func TestService_handleDispatchFailures(t *testing.T) {
 	})
 
 	t.Run("handler panic does not crash function", func(t *testing.T) {
-		// Create service with handler that panics
-		svc := &service{
-			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
+		// Create mock notifier that panics
+		mockNotifier := NewDispatchFailureNotifierMock(t)
+		mockNotifier.EXPECT().NotifyDispatchFailure(mock.Anything, mock.Anything).RunAndReturn(
+			func(ctx context.Context, failure BlockDispatchFailure) error {
 				panic("handler panic")
-			},
+			}).Once()
+
+		// Create service with notifier that panics
+		svc := &service{
+			dispatchFailureNotifier: mockNotifier,
 		}
 
 		// Create channel and context
@@ -411,6 +443,49 @@ func TestService_handleDispatchFailures(t *testing.T) {
 			t.Fatal("handleDispatchFailures should complete despite handler panic")
 		}
 	})
+
+	t.Run("logs error when notifier returns error", func(t *testing.T) {
+		// Create mock notifier that returns an error
+		mockNotifier := NewDispatchFailureNotifierMock(t)
+		notifierError := errors.New("notifier processing error")
+		mockNotifier.EXPECT().NotifyDispatchFailure(mock.Anything, mock.Anything).Return(notifierError).Once()
+
+		// Create service with notifier that returns error
+		svc := &service{
+			dispatchFailureNotifier: mockNotifier,
+		}
+
+		// Create channel and context
+		dispatchErrCh := make(chan BlockDispatchFailure, 1)
+		ctx := t.Context()
+
+		// Start handleDispatchFailures in a goroutine
+		done := make(chan struct{})
+		go func() {
+			svc.handleDispatchFailures(ctx, dispatchErrCh)
+			close(done)
+		}()
+
+		// Send test failure
+		failure := BlockDispatchFailure{
+			Network: "ethereum",
+			Height:  types.Hex("0x100"),
+			Errors:  []error{errors.New("test error")},
+		}
+		dispatchErrCh <- failure
+		close(dispatchErrCh)
+
+		// Function should complete and log the notifier error
+		select {
+		case <-done:
+			// Expected - function should complete and log the error
+		case <-time.After(2 * time.Second):
+			t.Fatal("handleDispatchFailures should complete and log notifier error")
+		}
+
+		// The error should be logged (we can't easily assert on log output in this test,
+		// but the coverage will show that the error handling path was executed)
+	})
 }
 
 func TestService_startHandleDispatchFailures(t *testing.T) {
@@ -419,13 +494,19 @@ func TestService_startHandleDispatchFailures(t *testing.T) {
 		var handlerCalls []BlockDispatchFailure
 		var mu sync.Mutex
 
-		// Create service with custom handler
-		svc := &service{
-			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
+		// Create mock notifier
+		mockNotifier := NewDispatchFailureNotifierMock(t)
+		mockNotifier.EXPECT().NotifyDispatchFailure(mock.Anything, mock.Anything).RunAndReturn(
+			func(ctx context.Context, failure BlockDispatchFailure) error {
 				mu.Lock()
 				defer mu.Unlock()
-				handlerCalls = append(handlerCalls, dispatchFailure)
-			},
+				handlerCalls = append(handlerCalls, failure)
+				return nil
+			}).Once()
+
+		// Create service with custom notifier
+		svc := &service{
+			dispatchFailureNotifier: mockNotifier,
 		}
 
 		// Create channel and context
@@ -458,11 +539,12 @@ func TestService_startHandleDispatchFailures(t *testing.T) {
 	})
 
 	t.Run("function returns immediately", func(t *testing.T) {
+		// Create mock notifier
+		mockNotifier := NewDispatchFailureNotifierMock(t)
+
 		// Create service
 		svc := &service{
-			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
-				// Handler implementation doesn't matter for this test
-			},
+			dispatchFailureNotifier: mockNotifier,
 		}
 
 		// Create channel and context
@@ -488,13 +570,19 @@ func TestService_startHandleDispatchFailures(t *testing.T) {
 		var handlerCalls []BlockDispatchFailure
 		var mu sync.Mutex
 
-		// Create service with custom handler
-		svc := &service{
-			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
+		// Create mock notifier
+		mockNotifier := NewDispatchFailureNotifierMock(t)
+		mockNotifier.EXPECT().NotifyDispatchFailure(mock.Anything, mock.Anything).RunAndReturn(
+			func(ctx context.Context, failure BlockDispatchFailure) error {
 				mu.Lock()
 				defer mu.Unlock()
-				handlerCalls = append(handlerCalls, dispatchFailure)
-			},
+				handlerCalls = append(handlerCalls, failure)
+				return nil
+			}).Once()
+
+		// Create service with custom notifier
+		svc := &service{
+			dispatchFailureNotifier: mockNotifier,
 		}
 
 		// Create channel and cancelable context
@@ -531,14 +619,20 @@ func TestService_startHandleDispatchFailures(t *testing.T) {
 		var handlerCalls []string
 		var mu sync.Mutex
 
-		// Create service with custom handler that includes a unique identifier
-		svc := &service{
-			dispatchFailureHandler: func(ctx context.Context, dispatchFailure BlockDispatchFailure) {
+		// Create mock notifier that includes a unique identifier
+		mockNotifier := NewDispatchFailureNotifierMock(t)
+		mockNotifier.EXPECT().NotifyDispatchFailure(mock.Anything, mock.Anything).RunAndReturn(
+			func(ctx context.Context, failure BlockDispatchFailure) error {
 				mu.Lock()
 				defer mu.Unlock()
 				// Use the network name to identify which goroutine processed this
-				handlerCalls = append(handlerCalls, dispatchFailure.Network)
-			},
+				handlerCalls = append(handlerCalls, failure.Network)
+				return nil
+			}).Times(2)
+
+		// Create service with custom notifier
+		svc := &service{
+			dispatchFailureNotifier: mockNotifier,
 		}
 
 		// Create separate channels for each goroutine

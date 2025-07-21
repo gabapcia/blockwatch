@@ -669,15 +669,12 @@ func TestService_Close(t *testing.T) {
 		close(eventsCh)
 	})
 
-	t.Run("close with custom dispatch failure handler", func(t *testing.T) {
+	t.Run("close with custom dispatch failure notifier", func(t *testing.T) {
 		// Setup
 		mockStorage := NewCheckpointStorageMock(t)
-		handlerCalled := false
-		customHandler := func(ctx context.Context, failure BlockDispatchFailure) {
-			handlerCalled = true
-		}
+		mockNotifier := NewDispatchFailureNotifierMock(t)
 
-		svc := New(map[string]Blockchain{}, WithCheckpointStorage(mockStorage), WithDispatchFailureHandler(customHandler))
+		svc := New(map[string]Blockchain{}, WithCheckpointStorage(mockStorage), WithDispatchFailureNotifier(mockNotifier))
 
 		ctx := t.Context()
 
@@ -697,8 +694,8 @@ func TestService_Close(t *testing.T) {
 			t.Fatal("Expected output channel to be closed")
 		}
 
-		// Handler should not have been called during normal close
-		assert.False(t, handlerCalled)
+		// Notifier should not have been called during normal close
+		// (no assertions needed since mock will verify expectations)
 	})
 }
 
@@ -722,7 +719,7 @@ func TestNew(t *testing.T) {
 		assert.NotNil(t, svc.checkpointStorage)
 		assert.IsType(t, nopCheckpoint{}, svc.checkpointStorage)
 		assert.Nil(t, svc.retry)
-		assert.NotNil(t, svc.dispatchFailureHandler)
+		assert.NotNil(t, svc.dispatchFailureNotifier)
 		assert.False(t, svc.isStarted)
 		assert.Nil(t, svc.closeFunc)
 	})
@@ -807,7 +804,8 @@ func TestNew(t *testing.T) {
 
 		// Should not panic when called
 		assert.NotPanics(t, func() {
-			svc.dispatchFailureHandler(ctx, failure)
+			err := svc.dispatchFailureNotifier.NotifyDispatchFailure(ctx, failure)
+			assert.NoError(t, err)
 		})
 	})
 
@@ -920,7 +918,6 @@ func TestWithCheckpointStorage(t *testing.T) {
 		// Setup
 		mockStorage := NewCheckpointStorageMock(t)
 		mockRetry := retrytest.NewRetry(t)
-		customHandler := func(ctx context.Context, failure BlockDispatchFailure) {}
 		networks := map[string]Blockchain{
 			"ethereum": NewBlockchainMock(t),
 		}
@@ -929,13 +926,13 @@ func TestWithCheckpointStorage(t *testing.T) {
 		svc := New(networks,
 			WithCheckpointStorage(mockStorage),
 			WithRetry(mockRetry),
-			WithDispatchFailureHandler(customHandler),
+			WithDispatchFailureNotifier(NewDispatchFailureNotifierMock(t)),
 		)
 
 		// Verify all options are applied
 		assert.Equal(t, mockStorage, svc.checkpointStorage)
 		assert.Equal(t, mockRetry, svc.retry)
-		assert.NotNil(t, svc.dispatchFailureHandler)
+		assert.NotNil(t, svc.dispatchFailureNotifier)
 	})
 }
 
@@ -1006,7 +1003,6 @@ func TestWithRetry(t *testing.T) {
 		// Setup
 		mockStorage := NewCheckpointStorageMock(t)
 		mockRetry := retrytest.NewRetry(t)
-		customHandler := func(ctx context.Context, failure BlockDispatchFailure) {}
 		networks := map[string]Blockchain{
 			"ethereum": NewBlockchainMock(t),
 		}
@@ -1015,31 +1011,30 @@ func TestWithRetry(t *testing.T) {
 		svc := New(networks,
 			WithRetry(mockRetry),
 			WithCheckpointStorage(mockStorage),
-			WithDispatchFailureHandler(customHandler),
+			WithDispatchFailureNotifier(NewDispatchFailureNotifierMock(t)),
 		)
 
 		// Verify all options are applied
 		assert.Equal(t, mockRetry, svc.retry)
 		assert.Equal(t, mockStorage, svc.checkpointStorage)
-		assert.NotNil(t, svc.dispatchFailureHandler)
+		assert.NotNil(t, svc.dispatchFailureNotifier)
 	})
 }
 
-func TestWithDispatchFailureHandler(t *testing.T) {
-	t.Run("sets custom dispatch failure handler", func(t *testing.T) {
+func TestWithDispatchFailureNotifier(t *testing.T) {
+	t.Run("sets custom dispatch failure notifier", func(t *testing.T) {
 		// Setup
-		handlerCalled := false
-		customHandler := func(ctx context.Context, failure BlockDispatchFailure) {
-			handlerCalled = true
-		}
+		mockNotifier := NewDispatchFailureNotifierMock(t)
+		mockNotifier.EXPECT().NotifyDispatchFailure(mock.Anything, mock.Anything).Return(nil).Once()
+
 		networks := map[string]Blockchain{
 			"ethereum": NewBlockchainMock(t),
 		}
 
-		// Create service with custom handler
-		svc := New(networks, WithDispatchFailureHandler(customHandler))
+		// Create service with custom notifier
+		svc := New(networks, WithDispatchFailureNotifier(mockNotifier))
 
-		// Verify handler is set and works
+		// Verify notifier is set and works
 		ctx := context.Background()
 		failure := BlockDispatchFailure{
 			Network: "ethereum",
@@ -1047,24 +1042,23 @@ func TestWithDispatchFailureHandler(t *testing.T) {
 			Errors:  []error{errors.New("test error")},
 		}
 
-		svc.dispatchFailureHandler(ctx, failure)
-		assert.True(t, handlerCalled)
+		err := svc.dispatchFailureNotifier.NotifyDispatchFailure(ctx, failure)
+		assert.NoError(t, err)
 	})
 
-	t.Run("overrides default handler", func(t *testing.T) {
+	t.Run("overrides default notifier", func(t *testing.T) {
 		// Setup
-		customHandlerCalled := false
-		customHandler := func(ctx context.Context, failure BlockDispatchFailure) {
-			customHandlerCalled = true
-		}
+		mockNotifier := NewDispatchFailureNotifierMock(t)
+		mockNotifier.EXPECT().NotifyDispatchFailure(mock.Anything, mock.Anything).Return(nil).Once()
+
 		networks := map[string]Blockchain{
 			"ethereum": NewBlockchainMock(t),
 		}
 
-		// Create service with custom handler
-		svc := New(networks, WithDispatchFailureHandler(customHandler))
+		// Create service with custom notifier
+		svc := New(networks, WithDispatchFailureNotifier(mockNotifier))
 
-		// Test that custom handler is called, not default
+		// Test that custom notifier is called, not default
 		ctx := context.Background()
 		failure := BlockDispatchFailure{
 			Network: "ethereum",
@@ -1072,8 +1066,8 @@ func TestWithDispatchFailureHandler(t *testing.T) {
 			Errors:  []error{errors.New("test error")},
 		}
 
-		svc.dispatchFailureHandler(ctx, failure)
-		assert.True(t, customHandlerCalled)
+		err := svc.dispatchFailureNotifier.NotifyDispatchFailure(ctx, failure)
+		assert.NoError(t, err)
 	})
 
 	t.Run("can be set to nil", func(t *testing.T) {
@@ -1082,27 +1076,31 @@ func TestWithDispatchFailureHandler(t *testing.T) {
 			"ethereum": NewBlockchainMock(t),
 		}
 
-		// Create service with nil handler
-		svc := New(networks, WithDispatchFailureHandler(nil))
+		// Create service with nil notifier
+		svc := New(networks, WithDispatchFailureNotifier(nil))
 
-		// Verify handler is nil
-		assert.Nil(t, svc.dispatchFailureHandler)
+		// Verify notifier is nil
+		assert.Nil(t, svc.dispatchFailureNotifier)
 	})
 
-	t.Run("handler receives correct failure information", func(t *testing.T) {
+	t.Run("notifier receives correct failure information", func(t *testing.T) {
 		// Setup
 		var receivedFailure BlockDispatchFailure
-		customHandler := func(ctx context.Context, failure BlockDispatchFailure) {
-			receivedFailure = failure
-		}
+		mockNotifier := NewDispatchFailureNotifierMock(t)
+		mockNotifier.EXPECT().NotifyDispatchFailure(mock.Anything, mock.Anything).RunAndReturn(
+			func(ctx context.Context, failure BlockDispatchFailure) error {
+				receivedFailure = failure
+				return nil
+			}).Once()
+
 		networks := map[string]Blockchain{
 			"ethereum": NewBlockchainMock(t),
 		}
 
-		// Create service with custom handler
-		svc := New(networks, WithDispatchFailureHandler(customHandler))
+		// Create service with custom notifier
+		svc := New(networks, WithDispatchFailureNotifier(mockNotifier))
 
-		// Test handler receives correct data
+		// Test notifier receives correct data
 		ctx := context.Background()
 		expectedFailure := BlockDispatchFailure{
 			Network: "polygon",
@@ -1110,31 +1108,28 @@ func TestWithDispatchFailureHandler(t *testing.T) {
 			Errors:  []error{errors.New("network error"), errors.New("timeout error")},
 		}
 
-		svc.dispatchFailureHandler(ctx, expectedFailure)
+		err := svc.dispatchFailureNotifier.NotifyDispatchFailure(ctx, expectedFailure)
+		assert.NoError(t, err)
 		assert.Equal(t, expectedFailure, receivedFailure)
 	})
 
-	t.Run("last option wins when multiple handlers provided", func(t *testing.T) {
+	t.Run("last option wins when multiple notifiers provided", func(t *testing.T) {
 		// Setup
-		handler1Called := false
-		handler2Called := false
-		handler1 := func(ctx context.Context, failure BlockDispatchFailure) {
-			handler1Called = true
-		}
-		handler2 := func(ctx context.Context, failure BlockDispatchFailure) {
-			handler2Called = true
-		}
+		mockNotifier1 := NewDispatchFailureNotifierMock(t)
+		mockNotifier2 := NewDispatchFailureNotifierMock(t)
+		mockNotifier2.EXPECT().NotifyDispatchFailure(mock.Anything, mock.Anything).Return(nil).Once()
+
 		networks := map[string]Blockchain{
 			"ethereum": NewBlockchainMock(t),
 		}
 
-		// Create service with multiple handlers
+		// Create service with multiple notifiers
 		svc := New(networks,
-			WithDispatchFailureHandler(handler1),
-			WithDispatchFailureHandler(handler2),
+			WithDispatchFailureNotifier(mockNotifier1),
+			WithDispatchFailureNotifier(mockNotifier2),
 		)
 
-		// Test that only the last handler is called
+		// Test that only the last notifier is used
 		ctx := context.Background()
 		failure := BlockDispatchFailure{
 			Network: "ethereum",
@@ -1142,26 +1137,25 @@ func TestWithDispatchFailureHandler(t *testing.T) {
 			Errors:  []error{errors.New("test error")},
 		}
 
-		svc.dispatchFailureHandler(ctx, failure)
-		assert.False(t, handler1Called)
-		assert.True(t, handler2Called)
+		err := svc.dispatchFailureNotifier.NotifyDispatchFailure(ctx, failure)
+		assert.NoError(t, err)
+		// mockNotifier2 expectations will be verified, mockNotifier1 should not be called
 	})
 
 	t.Run("works with other options", func(t *testing.T) {
 		// Setup
 		mockStorage := NewCheckpointStorageMock(t)
 		mockRetry := retrytest.NewRetry(t)
-		handlerCalled := false
-		customHandler := func(ctx context.Context, failure BlockDispatchFailure) {
-			handlerCalled = true
-		}
+		mockNotifier := NewDispatchFailureNotifierMock(t)
+		mockNotifier.EXPECT().NotifyDispatchFailure(mock.Anything, mock.Anything).Return(nil).Once()
+
 		networks := map[string]Blockchain{
 			"ethereum": NewBlockchainMock(t),
 		}
 
 		// Create service with multiple options
 		svc := New(networks,
-			WithDispatchFailureHandler(customHandler),
+			WithDispatchFailureNotifier(mockNotifier),
 			WithCheckpointStorage(mockStorage),
 			WithRetry(mockRetry),
 		)
@@ -1170,7 +1164,7 @@ func TestWithDispatchFailureHandler(t *testing.T) {
 		assert.Equal(t, mockStorage, svc.checkpointStorage)
 		assert.Equal(t, mockRetry, svc.retry)
 
-		// Test handler works
+		// Test notifier works
 		ctx := context.Background()
 		failure := BlockDispatchFailure{
 			Network: "ethereum",
@@ -1178,7 +1172,7 @@ func TestWithDispatchFailureHandler(t *testing.T) {
 			Errors:  []error{errors.New("test error")},
 		}
 
-		svc.dispatchFailureHandler(ctx, failure)
-		assert.True(t, handlerCalled)
+		err := svc.dispatchFailureNotifier.NotifyDispatchFailure(ctx, failure)
+		assert.NoError(t, err)
 	})
 }
