@@ -136,8 +136,8 @@ type Engines struct {
 // Config represents the full application configuration, including logging, telemetry,
 // global engine definitions, and per-use-case settings.
 type Config struct {
-	Log       pkg.Logger    `env:", prefix=ENGINES_" validate:"required"` // Log defines the logging configuration for the application.
-	Telemetry pkg.Telemetry `env:", prefix=ENGINES_" validate:"required"` // Telemetry defines the telemetry and service identity configuration.
+	Log       pkg.Logger    `env:", prefix=LOG_" validate:"required"`       // Log defines the logging configuration for the application.
+	Telemetry pkg.Telemetry `env:", prefix=TELEMETRY_" validate:"required"` // Telemetry defines the telemetry and service identity configuration.
 
 	Engines Engines `env:", prefix=ENGINES_" validate:"omitempty"` // Engines holds the globally defined storage and messaging engine configurations.
 
