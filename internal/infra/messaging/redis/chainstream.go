@@ -8,11 +8,18 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// chainstreamDispatchFailureNotifier implements chainstream.DispatchFailureNotifier
+// by sending dispatch failure information to a Redis Stream.
 type chainstreamDispatchFailureNotifier struct {
-	conn   *redis.Client
-	stream string
+	conn   *redis.Client // Redis client connection
+	stream string        // Redis Stream name to which failures will be published
 }
 
+// AsChainstreamDispatchFailureNotifier returns a chainstreamDispatchFailureNotifier
+// that writes block dispatch failures to the specified Redis Stream.
+//
+// Parameters:
+//   - stream: the name of the Redis Stream where the failure messages will be published.
 func (c *client) AsChainstreamDispatchFailureNotifier(stream string) *chainstreamDispatchFailureNotifier {
 	return &chainstreamDispatchFailureNotifier{
 		conn:   c.conn,
@@ -20,6 +27,8 @@ func (c *client) AsChainstreamDispatchFailureNotifier(stream string) *chainstrea
 	}
 }
 
+// makeBlockDispatchFailureMessage converts a BlockDispatchFailure into a flat map[string]any
+// that can be sent as fields in a Redis Stream entry.
 func makeBlockDispatchFailureMessage(dispatchFailure chainstream.BlockDispatchFailure) map[string]any {
 	errorList := make([]string, len(dispatchFailure.Errors))
 	for i, err := range dispatchFailure.Errors {
@@ -33,6 +42,9 @@ func makeBlockDispatchFailureMessage(dispatchFailure chainstream.BlockDispatchFa
 	}
 }
 
+// NotifyDispatchFailure publishes a block dispatch failure event to the configured Redis Stream.
+//
+// This method implements the chainstream.DispatchFailureNotifier interface.
 func (c *chainstreamDispatchFailureNotifier) NotifyDispatchFailure(ctx context.Context, failure chainstream.BlockDispatchFailure) error {
 	return c.conn.XAdd(ctx, &redis.XAddArgs{
 		Stream: c.stream,
@@ -41,4 +53,5 @@ func (c *chainstreamDispatchFailureNotifier) NotifyDispatchFailure(ctx context.C
 	}).Err()
 }
 
+// Compile-time check to ensure chainstreamDispatchFailureNotifier implements DispatchFailureNotifier.
 var _ chainstream.DispatchFailureNotifier = new(chainstreamDispatchFailureNotifier)
