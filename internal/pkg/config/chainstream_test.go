@@ -42,8 +42,8 @@ func TestConfig_ChainStream(t *testing.T) {
 		t.Setenv("RETRY_ATTEMPTS", "5")
 		t.Setenv("RETRY_DELAY", "2s")
 		t.Setenv("RETRY_MAX_DELAY", "10s")
-		t.Setenv("DISPATCH_FAILURE_HANDLER_ENGINE", "RABBITMQ")
-		t.Setenv("DISPATCH_FAILURE_HANDLER_RABBITMQ_ROUTING_KEY", "dispatch.failures")
+		t.Setenv("DISPATCH_FAILURE_NOTIFIER_ENGINE", "RABBITMQ")
+		t.Setenv("DISPATCH_FAILURE_NOTIFIER_RABBITMQ_ROUTING_KEY", "dispatch.failures")
 
 		var chainstream ChainStream
 		ctx := t.Context()
@@ -66,9 +66,9 @@ func TestConfig_ChainStream(t *testing.T) {
 		assert.Equal(t, 2*time.Second, chainstream.Retry.Delay)
 		assert.Equal(t, 10*time.Second, chainstream.Retry.MaxDelay)
 
-		assert.NotNil(t, chainstream.DispatchFailureHandler)
-		assert.Equal(t, "RABBITMQ", chainstream.DispatchFailureHandler.Engine)
-		assert.Equal(t, "dispatch.failures", chainstream.DispatchFailureHandler.MessagePublisher.RabbitMQ.RoutingKey)
+		assert.NotNil(t, chainstream.DispatchFailureNotifier)
+		assert.Equal(t, "RABBITMQ", chainstream.DispatchFailureNotifier.Engine)
+		assert.Equal(t, "dispatch.failures", chainstream.DispatchFailureNotifier.MessagePublisher.RabbitMQ.RoutingKey)
 
 		// Test validate function
 		err = validate(chainstream)
@@ -156,8 +156,8 @@ func TestConfig_ChainStream(t *testing.T) {
 	t.Run("successful validation with inline messaging config", func(t *testing.T) {
 		// Set up configuration with inline messaging config instead of engine reference
 		t.Setenv("NETWORKS_ETHEREUM_PROVIDER_ENDPOINT", "https://eth.example.com")
-		t.Setenv("DISPATCH_FAILURE_HANDLER_REDIS_ADDRESS", "localhost:6379")
-		t.Setenv("DISPATCH_FAILURE_HANDLER_REDIS_STREAM", "failures")
+		t.Setenv("DISPATCH_FAILURE_NOTIFIER_REDIS_ADDRESS", "localhost:6379")
+		t.Setenv("DISPATCH_FAILURE_NOTIFIER_REDIS_STREAM", "failures")
 
 		var chainstream ChainStream
 		ctx := t.Context()
@@ -166,11 +166,11 @@ func TestConfig_ChainStream(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify inline config was loaded
-		require.NotNil(t, chainstream.DispatchFailureHandler)
-		assert.Empty(t, chainstream.DispatchFailureHandler.Engine)
-		require.NotNil(t, chainstream.DispatchFailureHandler.InlineConfig.Redis)
-		assert.Equal(t, "localhost:6379", chainstream.DispatchFailureHandler.InlineConfig.Redis.Address)
-		assert.Equal(t, "failures", chainstream.DispatchFailureHandler.MessagePublisher.Redis.Stream)
+		require.NotNil(t, chainstream.DispatchFailureNotifier)
+		assert.Empty(t, chainstream.DispatchFailureNotifier.Engine)
+		require.NotNil(t, chainstream.DispatchFailureNotifier.InlineConfig.Redis)
+		assert.Equal(t, "localhost:6379", chainstream.DispatchFailureNotifier.InlineConfig.Redis.Address)
+		assert.Equal(t, "failures", chainstream.DispatchFailureNotifier.MessagePublisher.Redis.Stream)
 
 		// Validation should pass with inline config
 		err = validate(chainstream)

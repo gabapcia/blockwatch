@@ -201,7 +201,7 @@ func TestValidateConfigStruct(t *testing.T) {
 				},
 			},
 			Chainstream: ChainStream{
-				DispatchFailureHandler: &messaging.Picker{
+				DispatchFailureNotifier: &messaging.Picker{
 					Engine: messaging.EngineRabbitMQ,
 				},
 			},
@@ -211,7 +211,7 @@ func TestValidateConfigStruct(t *testing.T) {
 		mockSL.EXPECT().Current().Return(reflect.ValueOf(config))
 		mockSL.EXPECT().ReportError(
 			mock.Anything,
-			"DispatchFailureHandler.Engine",
+			"DispatchFailureNotifier.Engine",
 			"Engine",
 			"engine_not_configured",
 			messaging.EngineRabbitMQ,
@@ -1049,11 +1049,11 @@ func TestConfig_Config(t *testing.T) {
 	})
 
 	t.Run("validation fails with chainstream dispatch failure handler engine not configured", func(t *testing.T) {
-		// Set up configuration where ChainStream DispatchFailureHandler references a global RabbitMQ engine
+		// Set up configuration where ChainStream DispatchFailureNotifier references a global RabbitMQ engine
 		// but the global RabbitMQ engine is not configured
 		t.Setenv("CHAINSTREAM_NETWORKS_ETHEREUM_PROVIDER_ENDPOINT", "https://eth.example.com")
-		t.Setenv("CHAINSTREAM_DISPATCH_FAILURE_HANDLER_ENGINE", "RABBITMQ")
-		t.Setenv("CHAINSTREAM_DISPATCH_FAILURE_HANDLER_RABBITMQ_ROUTING_KEY", "failures")
+		t.Setenv("CHAINSTREAM_DISPATCH_FAILURE_NOTIFIER_ENGINE", "RABBITMQ")
+		t.Setenv("CHAINSTREAM_DISPATCH_FAILURE_NOTIFIER_RABBITMQ_ROUTING_KEY", "failures")
 		// Missing ENGINES_MESSAGING_RABBITMQ_URI
 
 		// Set other required fields (using inline configs)
@@ -1116,8 +1116,8 @@ func TestConfig_Config(t *testing.T) {
 		t.Setenv("WALLETWATCH_IDEMPOTENCY_GUARD_ENGINE", "REDIS")
 		t.Setenv("CHAINSTREAM_NETWORKS_ETHEREUM_PROVIDER_ENDPOINT", "https://eth.example.com")
 		t.Setenv("CHAINSTREAM_CHECKPOINT_STORAGE_ENGINE", "POSTGRESQL")
-		t.Setenv("CHAINSTREAM_DISPATCH_FAILURE_HANDLER_ENGINE", "REDIS")
-		t.Setenv("CHAINSTREAM_DISPATCH_FAILURE_HANDLER_REDIS_STREAM", "failures")
+		t.Setenv("CHAINSTREAM_DISPATCH_FAILURE_NOTIFIER_ENGINE", "REDIS")
+		t.Setenv("CHAINSTREAM_DISPATCH_FAILURE_NOTIFIER_REDIS_STREAM", "failures")
 
 		ctx := t.Context()
 		config, err := Load(ctx)
@@ -1139,7 +1139,7 @@ func TestConfig_Config(t *testing.T) {
 		assert.Equal(t, "RABBITMQ", config.Walletwatch.TransactionNotifier.Engine)
 		assert.Equal(t, "REDIS", config.Walletwatch.IdempotencyGuard.Engine)
 		assert.Equal(t, "POSTGRESQL", config.Chainstream.CheckpointStorage.Engine)
-		assert.Equal(t, "REDIS", config.Chainstream.DispatchFailureHandler.Engine)
+		assert.Equal(t, "REDIS", config.Chainstream.DispatchFailureNotifier.Engine)
 	})
 
 	t.Run("validation fails with mixed valid and invalid engine references", func(t *testing.T) {
@@ -1175,8 +1175,8 @@ func TestConfig_Config(t *testing.T) {
 		// Optional pointer pickers
 		t.Setenv("WALLETWATCH_IDEMPOTENCY_GUARD_ENGINE", "REDIS")
 		t.Setenv("CHAINSTREAM_CHECKPOINT_STORAGE_ENGINE", "REDIS")
-		t.Setenv("CHAINSTREAM_DISPATCH_FAILURE_HANDLER_ENGINE", "REDIS")
-		t.Setenv("CHAINSTREAM_DISPATCH_FAILURE_HANDLER_REDIS_STREAM", "failures")
+		t.Setenv("CHAINSTREAM_DISPATCH_FAILURE_NOTIFIER_ENGINE", "REDIS")
+		t.Setenv("CHAINSTREAM_DISPATCH_FAILURE_NOTIFIER_REDIS_STREAM", "failures")
 
 		ctx := t.Context()
 		config, err := Load(ctx)
@@ -1187,7 +1187,7 @@ func TestConfig_Config(t *testing.T) {
 		assert.Equal(t, "REDIS", config.Walletwatch.IdempotencyGuard.Engine)
 		require.NotNil(t, config.Chainstream.CheckpointStorage)
 		assert.Equal(t, "REDIS", config.Chainstream.CheckpointStorage.Engine)
-		require.NotNil(t, config.Chainstream.DispatchFailureHandler)
-		assert.Equal(t, "REDIS", config.Chainstream.DispatchFailureHandler.Engine)
+		require.NotNil(t, config.Chainstream.DispatchFailureNotifier)
+		assert.Equal(t, "REDIS", config.Chainstream.DispatchFailureNotifier.Engine)
 	})
 }

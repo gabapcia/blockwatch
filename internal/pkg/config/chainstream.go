@@ -18,6 +18,6 @@ type ChainStream struct {
 	// Networks contains the JSON-RPC configurations for supported blockchain networks.
 	Networks blockchain.Networks `env:", prefix=NETWORKS_" validate:"required"`
 
-	// DispatchFailureHandler selects the messaging backend used to report dispatch failures.
-	DispatchFailureHandler *messaging.Picker `env:", prefix=DISPATCH_FAILURE_HANDLER_" validate:"omitempty"`
+	// DispatchFailureNotifier selects the messaging backend used to report dispatch failures.
+	DispatchFailureNotifier *messaging.Picker `env:", prefix=DISPATCH_FAILURE_NOTIFIER_" validate:"omitempty"`
 }
