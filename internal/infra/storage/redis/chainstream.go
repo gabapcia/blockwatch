@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/gabapcia/blockwatch/internal/chainstream"
-	"github.com/gabapcia/blockwatch/internal/pkg/logger"
 	"github.com/gabapcia/blockwatch/internal/pkg/types"
 
 	"github.com/redis/go-redis/v9"
@@ -14,56 +13,6 @@ import (
 
 // chainstreamKeyPrefix is the namespace prefix for all keys related to the chainstream checkpointing system.
 const chainstreamKeyPrefix = "chainstream"
-
-// chainstreamDispatchFailuresStreamKey returns the Redis key used for storing
-// block dispatch failure events.
-//
-// Format:
-//
-//	"chainstream:streams:dispatch-failures"
-func chainstreamDispatchFailuresStreamKey() string {
-	return fmt.Sprintf("%s:streams:dispatch-failures", chainstreamKeyPrefix)
-}
-
-// makeBlockDispatchFailureMessage converts a BlockDispatchFailure into a map[string]any
-// suitable for sending to Redis streams.
-func makeBlockDispatchFailureMessage(dispatchFailure chainstream.BlockDispatchFailure) map[string]any {
-	return map[string]any{
-		"network": dispatchFailure.Network, // name of the blockchain network (e.g., "ethereum")
-		"height":  dispatchFailure.Height,  // block height that failed to be dispatched
-		"errors":  dispatchFailure.Errors,  // slice of all errors encountered during dispatch and retry attempts
-	}
-}
-
-// NotifyChainstreamDispatchFailures sends a block dispatch failure event to a predefined Redis stream.
-//
-// The event includes the network name, block height, and error details. This method uses
-// a fixed stream key ("chainstream:streams:dispatch-failures") and adds the entry with
-// an auto-generated ID.
-//
-// If the Redis operation fails, the error is logged.
-//
-// Parameters:
-//   - ctx: context for timeout and cancellation.
-//   - dispatchFailure: the failure event to be sent.
-func (c *client) NotifyChainstreamDispatchFailures(ctx context.Context, dispatchFailure chainstream.BlockDispatchFailure) {
-	stream := chainstreamDispatchFailuresStreamKey()
-
-	cmd := c.conn.XAdd(ctx, &redis.XAddArgs{
-		Stream: stream,
-		ID:     "*",
-		Values: makeBlockDispatchFailureMessage(dispatchFailure),
-	})
-	if err := cmd.Err(); err != nil {
-		logger.Error(ctx, "stream xadd failed",
-			"redis.stream", stream,
-			"error", err,
-		)
-	}
-}
-
-// Compile-time assertion to ensure client implements the DispatchFailureHandler interface.
-var _ chainstream.DispatchFailureHandler = new(client).NotifyChainstreamDispatchFailures
 
 // chainstreamCheckpointKey constructs the Redis key used to store the latest processed block height
 // for a specific blockchain network. The format is:
