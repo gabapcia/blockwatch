@@ -1,0 +1,21 @@
+version: "2"
+
+sql:
+  -
+    engine: "postgresql"
+    queries: "queries/*"
+    schema: "migrations/*"
+    strict_function_checks: true
+    strict_order_by: true
+    gen:
+      go:
+        package: "sqlc"
+        out: "sqlc"
+        sql_package: "pgx/v5"
+        emit_prepared_queries: true
+        emit_empty_slices: true
+        emit_sql_as_comment: true
+        overrides:
+          -
+            db_type: uuid
+            go_type: github.com/google/uuid.UUID

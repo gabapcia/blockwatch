@@ -1,7 +1,7 @@
 # Raw Build
 .PHONY: build
 build:
-	@go build -o blockwatch cmd/cli/main.go
+	@CGO_ENABLED=0 go build -o blockwatch cmd/cli/main.go
 
 .PHONY: run
 run: build
@@ -19,11 +19,7 @@ docker-run: docker-build
 # Tests
 .PHONY: mocks
 mocks:
-	@command -v mockery >/dev/null 2>&1 || { \
-		echo "Error: mockery not found. Please install it from https://github.com/vektra/mockery"; \
-		exit 1; \
-	}
-	@mockery
+	@docker run -v "$$PWD":/src -w /src vektra/mockery:3
 
 .PHONY: unit-tests
 unit-tests:
@@ -35,3 +31,20 @@ coverage:
 	@go test -coverprofile=coverage.out ./...
 	@go tool cover -html=coverage.out -o coverage.html
 	@open coverage.html
+
+# PostgreSQL
+.PHONY: generate-queries
+generate-queries:
+	@docker run --rm -v $$PWD:/src -w /src \
+		sqlc/sqlc --file internal/infra/storage/postgresql/sqlc.yaml generate
+
+.PHONY: new-migration
+new-migration:
+	@read -p 'Migration name: ' MIGRATION_NAME; \
+	docker run --rm -v $$PWD/internal/infra/storage/postgresql/internal/migrations:/migrations --network host \
+		migrate/migrate create -ext sql -dir /migrations -seq $$MIGRATION_NAME
+
+.PHONY: apply-migrations
+apply-migrations:
+	@docker run --rm -v $$PWD/internal/infra/storage/postgresql/internal/migrations:/migrations --network host \
+		migrate/migrate -path=/migrations/ -database $${POSTGRESQL_DSN:-postgres://blockwatch:blockwatch@localhost:5432/blockwatch?sslmode=disable} up
