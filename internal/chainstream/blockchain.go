@@ -53,33 +53,6 @@ type BlockDispatchFailure struct {
 	Errors  []error   // slice of all errors encountered during dispatch and retry attempts
 }
 
-// handleDispatchFailures consumes unrecoverable block dispatch errors from dispatchErrCh,
-// and passes each BlockDispatchFailure to the user-defined handler (s.dispatchFailureHandler).
-//
-// This method blocks until dispatchErrCh is closed or ctx is canceled.
-// If no handler is set, failures are silently ignored.
-func (s *service) handleDispatchFailures(ctx context.Context, dispatchErrCh <-chan BlockDispatchFailure) {
-	for {
-		dispatchFailure, ok := chflow.Receive(ctx, dispatchErrCh)
-		if !ok {
-			return
-		}
-
-		if s.dispatchFailureHandler != nil {
-			s.dispatchFailureHandler(ctx, dispatchFailure)
-		}
-	}
-}
-
-// startHandleDispatchFailures launches handleDispatchFailures in a background goroutine.
-//
-// It immediately returns, leaving the handler running until dispatchErrCh is closed
-// or ctx is canceled. This function is typically called during startup to ensure that
-// persistent dispatch errors are properly handled.
-func (s *service) startHandleDispatchFailures(ctx context.Context, dispatchErrCh <-chan BlockDispatchFailure) {
-	go s.handleDispatchFailures(ctx, dispatchErrCh)
-}
-
 // retryFailedBlockFetches contains the core retry logic for failed block fetches.
 // It reads BlockDispatchFailure events from retryCh, attempts to re-fetch each block
 // via s.retry.Execute, and:
