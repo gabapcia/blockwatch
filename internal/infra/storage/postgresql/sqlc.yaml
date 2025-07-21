@@ -9,8 +9,8 @@ sql:
     strict_order_by: true
     gen:
       go:
-        package: "sqlc"
-        out: "sqlc"
+        package: "querier"
+        out: "querier"
         sql_package: "pgx/v5"
         emit_prepared_queries: true
         emit_empty_slices: true

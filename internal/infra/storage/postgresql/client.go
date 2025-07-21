@@ -3,14 +3,14 @@ package postgresql
 import (
 	"context"
 
-	"github.com/gabapcia/blockwatch/internal/infra/storage/postgresql/internal/sqlc"
+	"github.com/gabapcia/blockwatch/internal/infra/storage/postgresql/querier"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type client struct {
 	pool    *pgxpool.Pool
-	queries *sqlc.Queries
+	queries *querier.Queries
 }
 
 func (c client) Close() {
@@ -25,6 +25,6 @@ func New(ctx context.Context, dsn string) (*client, error) {
 
 	return &client{
 		pool:    pool,
-		queries: sqlc.New(pool),
+		queries: querier.New(pool),
 	}, nil
 }

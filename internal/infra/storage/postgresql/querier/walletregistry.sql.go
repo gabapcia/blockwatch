@@ -3,7 +3,7 @@
 //   sqlc v1.29.0
 // source: walletregistry.sql
 
-package sqlc
+package querier
 
 import (
 	"context"
@@ -13,18 +13,18 @@ import (
 
 const deleteMonitoredWalletByAddress = `-- name: DeleteMonitoredWalletByAddress :execrows
 DELETE FROM "monitored_wallets"
-WHERE "network" = $1 AND "address" = $2
+WHERE "network" = UPPER($1) AND "address" = $2
 `
 
 type DeleteMonitoredWalletByAddressParams struct {
-	Network string
+	Network interface{}
 	Address string
 }
 
 // DeleteMonitoredWalletByAddress
 //
 //	DELETE FROM "monitored_wallets"
-//	WHERE "network" = $1 AND "address" = $2
+//	WHERE "network" = UPPER($1) AND "address" = $2
 func (q *Queries) DeleteMonitoredWalletByAddress(ctx context.Context, arg DeleteMonitoredWalletByAddressParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteMonitoredWalletByAddress, arg.Network, arg.Address)
 	if err != nil {

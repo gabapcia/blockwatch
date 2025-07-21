@@ -2,7 +2,7 @@
 // versions:
 //   sqlc v1.29.0
 
-package sqlc
+package querier
 
 import (
 	"github.com/google/uuid"

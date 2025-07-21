@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/gabapcia/blockwatch/internal/infra/storage/postgresql/internal/sqlc"
+	"github.com/gabapcia/blockwatch/internal/infra/storage/postgresql/querier"
 	"github.com/gabapcia/blockwatch/internal/walletregistry"
 
 	"github.com/google/uuid"
@@ -25,7 +25,7 @@ import (
 //   - walletregistry.ErrWalletAlreadyRegistered if the wallet already exists.
 //   - or another error if the database operation fails.
 func (c *client) RegisterWallet(ctx context.Context, id walletregistry.WalletIdentifier) error {
-	err := c.queries.InsertMonitoredWallet(ctx, sqlc.InsertMonitoredWalletParams{
+	err := c.queries.InsertMonitoredWallet(ctx, querier.InsertMonitoredWalletParams{
 		ID:      uuid.Must(uuid.NewV7()),
 		Network: strings.ToUpper(id.Network),
 		Address: id.Address,
@@ -52,7 +52,7 @@ func (c *client) RegisterWallet(ctx context.Context, id walletregistry.WalletIde
 //   - walletregistry.ErrWalletNotFound if the wallet does not exist.
 //   - or another error if the database operation fails.
 func (c *client) UnregisterWallet(ctx context.Context, id walletregistry.WalletIdentifier) error {
-	rowsAffected, err := c.queries.DeleteMonitoredWalletByAddress(ctx, sqlc.DeleteMonitoredWalletByAddressParams{
+	rowsAffected, err := c.queries.DeleteMonitoredWalletByAddress(ctx, querier.DeleteMonitoredWalletByAddressParams{
 		Network: strings.ToUpper(id.Network),
 		Address: id.Address,
 	})

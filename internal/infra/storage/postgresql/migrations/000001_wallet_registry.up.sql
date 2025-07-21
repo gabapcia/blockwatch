@@ -32,9 +32,3 @@ EXECUTE FUNCTION enforce_uppercase_network();
 
 -- Add comment to the trigger function
 COMMENT ON FUNCTION enforce_uppercase_network() IS 'Ensures the "network" field is always stored in uppercase letters';
-
--- Create an index on the network column for faster lookups
-CREATE INDEX IF NOT EXISTS "idx_monitored_wallets_network" ON "monitored_wallets" USING HASH ("network");
-
--- Add comment to the index
-COMMENT ON INDEX "idx_monitored_wallets_network" IS 'Optimizes queries filtering by the "network" column';
