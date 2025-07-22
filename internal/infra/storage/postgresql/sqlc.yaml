@@ -1,21 +1,45 @@
 version: "2"
 
-sql:
-  -
+options:
+  sql-defaults: &sql-defaults
     engine: "postgresql"
-    queries: "queries/*"
     schema: "migrations/*"
     strict_function_checks: true
     strict_order_by: true
+
+  go-defaults: &go-defaults
+    sql_package: "pgx/v5"
+    emit_prepared_queries: true
+    emit_empty_slices: true
+    emit_sql_as_comment: true
+    emit_pointers_for_null_types: true
+
+overrides:
+  go:
+    overrides:
+      -
+        db_type: uuid
+        go_type: github.com/google/uuid.UUID
+      -
+        db_type: timestamptz
+        go_type: time.Time
+
+sql:
+  -
+    <<: *sql-defaults
+    name: Monitored Wallets
+    queries: "queries/monitored_wallets.sql"
     gen:
       go:
-        package: "querier"
-        out: "querier"
-        sql_package: "pgx/v5"
-        emit_prepared_queries: true
-        emit_empty_slices: true
-        emit_sql_as_comment: true
-        overrides:
-          -
-            db_type: uuid
-            go_type: github.com/google/uuid.UUID
+        <<: *go-defaults
+        out: querier/monitoredwallets
+        package: monitoredwallets
+  -
+    <<: *sql-defaults
+    name: WalletWatch Idempotency
+    queries: "queries/walletwatch_idempotency.sql"
+    gen:
+      go:
+        <<: *go-defaults
+        out: querier/walletwatchidempotency
+        package: walletwatchidempotency

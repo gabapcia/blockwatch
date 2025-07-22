@@ -3,7 +3,7 @@
 //   sqlc v1.29.0
 // source: monitored_wallets.sql
 
-package querier
+package monitoredwallets
 
 import (
 	"context"

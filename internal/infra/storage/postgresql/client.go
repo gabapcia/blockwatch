@@ -3,14 +3,17 @@ package postgresql
 import (
 	"context"
 
-	"github.com/gabapcia/blockwatch/internal/infra/storage/postgresql/querier"
+	"github.com/gabapcia/blockwatch/internal/infra/storage/postgresql/querier/monitoredwallets"
+	"github.com/gabapcia/blockwatch/internal/infra/storage/postgresql/querier/walletwatchidempotency"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type client struct {
-	pool    *pgxpool.Pool
-	queries *querier.Queries
+	pool *pgxpool.Pool
+
+	monitoredWallets       *monitoredwallets.Queries
+	walletwatchIdempotency *walletwatchidempotency.Queries
 }
 
 func (c client) Close() {
@@ -24,7 +27,8 @@ func New(ctx context.Context, dsn string) (*client, error) {
 	}
 
 	return &client{
-		pool:    pool,
-		queries: querier.New(pool),
+		pool:                   pool,
+		monitoredWallets:       monitoredwallets.New(pool),
+		walletwatchIdempotency: walletwatchidempotency.New(pool),
 	}, nil
 }
