@@ -19,6 +19,11 @@ func HexFromString(s string) (Hex, error) {
 	return Hex(s), nil
 }
 
+// HexFromInt converts an int64 value to a Hex representation.
+func HexFromInt(i int64) Hex {
+	return Hex(fmt.Sprintf("0x%x", i))
+}
+
 // validateHex checks whether a string is a valid hexadecimal number starting with "0x" or "0X".
 func validateHex(s string) error {
 	if !strings.HasPrefix(s, "0x") && !strings.HasPrefix(s, "0X") {
@@ -57,7 +62,7 @@ func (h *Hex) UnmarshalJSON(data []byte) error {
 func (h Hex) Add(n int64) Hex {
 	current := h.Int()
 	sum := current + n
-	return Hex(fmt.Sprintf("0x%x", sum))
+	return HexFromInt(sum)
 }
 
 // Int returns the decoded int64 value from the hexadecimal string.

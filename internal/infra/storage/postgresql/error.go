@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -20,4 +21,18 @@ import (
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation
+}
+
+// isNotFoundError checks whether the given error indicates that a query returned no rows.
+//
+// This is typically used to detect the absence of data when performing a SELECT query
+// with SQLC using the `:one` tag, which expects exactly one row.
+//
+// Parameters:
+//   - err: the error to inspect.
+//
+// Returns:
+//   - true if the error is pgx.ErrNoRows, false otherwise.
+func isNotFoundError(err error) bool {
+	return errors.Is(err, pgx.ErrNoRows)
 }

@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS "walletwatch_idempotency" (
     "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),    -- Timestamp when the record was created
     "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),    -- Automatically updated on each modification
     "finished_at" TIMESTAMPTZ,                          -- Timestamp when processing finished (nullable)
-    "id" UUID NOT NULL,                                 -- Unique identifier for the record
+    "id" UUID NOT NULL PRIMARY KEY,                     -- Unique identifier for the record
     "network" TEXT NOT NULL,                            -- Blockchain network (e.g., ETHEREUM), stored in uppercase
     "block_hash" TEXT NOT NULL,                         -- Unique hash of the blockchain block
     "in_progress_until" TIMESTAMPTZ NOT NULL,           -- Deadline for in-progress state, calculated externally

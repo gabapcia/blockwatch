@@ -40,6 +40,88 @@ func TestHexFromString(t *testing.T) {
 	})
 }
 
+func TestHexFromInt(t *testing.T) {
+	t.Run("zero", func(t *testing.T) {
+		result := HexFromInt(0)
+		assert.Equal(t, Hex("0x0"), result)
+	})
+
+	t.Run("positive single digit", func(t *testing.T) {
+		result := HexFromInt(5)
+		assert.Equal(t, Hex("0x5"), result)
+	})
+
+	t.Run("positive double digit", func(t *testing.T) {
+		result := HexFromInt(15)
+		assert.Equal(t, Hex("0xf"), result)
+	})
+
+	t.Run("positive large number", func(t *testing.T) {
+		result := HexFromInt(255)
+		assert.Equal(t, Hex("0xff"), result)
+	})
+
+	t.Run("positive very large number", func(t *testing.T) {
+		result := HexFromInt(65535)
+		assert.Equal(t, Hex("0xffff"), result)
+	})
+
+	t.Run("negative small number", func(t *testing.T) {
+		result := HexFromInt(-1)
+		assert.Equal(t, Hex("0x-1"), result)
+	})
+
+	t.Run("negative large number", func(t *testing.T) {
+		result := HexFromInt(-255)
+		assert.Equal(t, Hex("0x-ff"), result)
+	})
+
+	t.Run("power of 2", func(t *testing.T) {
+		result := HexFromInt(1024)
+		assert.Equal(t, Hex("0x400"), result)
+	})
+
+	t.Run("decimal 256", func(t *testing.T) {
+		result := HexFromInt(256)
+		assert.Equal(t, Hex("0x100"), result)
+	})
+
+	t.Run("round trip conversion preserves value", func(t *testing.T) {
+		testValues := []int64{0, 1, -1, 42, -42, 255, -255, 1024, -1024}
+
+		for _, original := range testValues {
+			hex := HexFromInt(original)
+			converted := hex.Int()
+			assert.Equal(t, original, converted, "Round trip failed for value %d", original)
+		}
+	})
+
+	t.Run("produces valid hex format for positive numbers", func(t *testing.T) {
+		testValues := []int64{0, 1, 255, 1024}
+
+		for _, value := range testValues {
+			hex := HexFromInt(value)
+
+			// Test that the result can be parsed back using HexFromString
+			_, err := HexFromString(string(hex))
+			assert.NoError(t, err, "HexFromInt(%d) produced invalid hex string %s", value, string(hex))
+		}
+	})
+
+	t.Run("negative numbers produce hex with minus sign", func(t *testing.T) {
+		testValues := []int64{-1, -255, -1024}
+
+		for _, value := range testValues {
+			hex := HexFromInt(value)
+			hexStr := string(hex)
+
+			// Negative numbers should start with "0x-"
+			assert.True(t, len(hexStr) > 3, "Hex string should be longer than 3 characters")
+			assert.Equal(t, "0x-", hexStr[:3], "Negative hex should start with '0x-'")
+		}
+	})
+}
+
 func TestValidateHex(t *testing.T) {
 	t.Run("valid lowercase hex", func(t *testing.T) {
 		err := validateHex("0x1a")

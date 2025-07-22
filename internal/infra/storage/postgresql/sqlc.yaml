@@ -43,3 +43,12 @@ sql:
         <<: *go-defaults
         out: querier/walletwatchidempotency
         package: walletwatchidempotency
+  -
+    <<: *sql-defaults
+    name: ChainStream Checkpoint
+    queries: "queries/chainstream_checkpoint.sql"
+    gen:
+      go:
+        <<: *go-defaults
+        out: querier/chainstreamcheckpoint
+        package: chainstreamcheckpoint

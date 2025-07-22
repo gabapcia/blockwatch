@@ -11,6 +11,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+// Stores block height checkpoints per blockchain network for stream processing
+type ChainstreamCheckpoint struct {
+	// Timestamp when the checkpoint record was inserted
+	CreatedAt time.Time
+	// Unique UUID identifier for the checkpoint entry
+	ID uuid.UUID
+	// Blockchain network name (stored in uppercase)
+	Network string
+	// Block height being tracked as a checkpoint
+	Height int64
+}
+
 // Stores wallets being monitored by network and address
 type MonitoredWallet struct {
 	// Timestamp when the wallet was registered

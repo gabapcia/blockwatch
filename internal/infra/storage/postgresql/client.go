@@ -3,6 +3,7 @@ package postgresql
 import (
 	"context"
 
+	"github.com/gabapcia/blockwatch/internal/infra/storage/postgresql/querier/chainstreamcheckpoint"
 	"github.com/gabapcia/blockwatch/internal/infra/storage/postgresql/querier/monitoredwallets"
 	"github.com/gabapcia/blockwatch/internal/infra/storage/postgresql/querier/walletwatchidempotency"
 
@@ -14,6 +15,7 @@ type client struct {
 
 	monitoredWallets       *monitoredwallets.Queries
 	walletwatchIdempotency *walletwatchidempotency.Queries
+	chainstreamCheckpoint  *chainstreamcheckpoint.Queries
 }
 
 func (c client) Close() {
@@ -30,5 +32,6 @@ func New(ctx context.Context, dsn string) (*client, error) {
 		pool:                   pool,
 		monitoredWallets:       monitoredwallets.New(pool),
 		walletwatchIdempotency: walletwatchidempotency.New(pool),
+		chainstreamCheckpoint:  chainstreamcheckpoint.New(pool),
 	}, nil
 }
