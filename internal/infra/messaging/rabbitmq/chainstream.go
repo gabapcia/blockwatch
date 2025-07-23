@@ -25,7 +25,7 @@ type chainstreamDispatchFailureNotifier struct {
 //
 // This allows a chainstream service to route unrecoverable dispatch failures
 // to external consumers (e.g., monitoring systems) via RabbitMQ.
-func (c *client) AsChainstreamDispatchFailureNotifier(exchange, routingKey string) *chainstreamDispatchFailureNotifier {
+func (c *Client) AsChainstreamDispatchFailureNotifier(exchange, routingKey string) *chainstreamDispatchFailureNotifier {
 	return &chainstreamDispatchFailureNotifier{
 		channel:    c.channel,
 		exchange:   exchange,

@@ -7,9 +7,9 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-// client wraps a RabbitMQ connection and channel, providing a simplified interface
+// Client wraps a RabbitMQ connection and channel, providing a simplified interface
 // for publishing and managing messaging resources.
-type client struct {
+type Client struct {
 	conn    *amqp.Connection // Underlying AMQP connection.
 	channel *amqp.Channel    // Channel used for publishing and other operations.
 }
@@ -17,24 +17,24 @@ type client struct {
 // Close gracefully closes both the channel and connection.
 //
 // It joins and returns any errors that occur during the closing process.
-// This method should be called to release resources when the client is no longer needed.
-func (c *client) Close() error {
+// This method should be called to release resources when the Client is no longer needed.
+func (c *Client) Close() error {
 	return errors.Join(
 		c.channel.Close(),
 		c.conn.Close(),
 	)
 }
 
-// New creates a new RabbitMQ client by establishing a connection and opening a channel.
+// New creates a new RabbitMQ Client by establishing a connection and opening a channel.
 //
 // Parameters:
 //   - ctx: Context for cancellation (currently unused but reserved for future improvements).
 //   - uri: AMQP URI (e.g., "amqp://user:password@host:5672/vhost") used to connect to RabbitMQ.
 //
 // Returns:
-//   - A pointer to the initialized client.
+//   - A pointer to the initialized Client.
 //   - An error if the connection or channel creation fails.
-func New(ctx context.Context, uri string) (*client, error) {
+func New(ctx context.Context, uri string) (*Client, error) {
 	conn, err := amqp.Dial(uri)
 	if err != nil {
 		return nil, err
@@ -45,7 +45,7 @@ func New(ctx context.Context, uri string) (*client, error) {
 		return nil, err
 	}
 
-	return &client{
+	return &Client{
 		conn:    conn,
 		channel: channel,
 	}, nil

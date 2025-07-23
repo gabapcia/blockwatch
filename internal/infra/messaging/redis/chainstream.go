@@ -20,7 +20,7 @@ type chainstreamDispatchFailureNotifier struct {
 //
 // Parameters:
 //   - stream: the name of the Redis Stream where the failure messages will be published.
-func (c *client) AsChainstreamDispatchFailureNotifier(stream string) *chainstreamDispatchFailureNotifier {
+func (c *Client) AsChainstreamDispatchFailureNotifier(stream string) *chainstreamDispatchFailureNotifier {
 	return &chainstreamDispatchFailureNotifier{
 		conn:   c.conn,
 		stream: stream,

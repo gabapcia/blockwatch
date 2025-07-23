@@ -21,7 +21,7 @@ func (c *client) Close() error {
 	return c.conn.Close()
 }
 
-// NewClient creates a new Redis client with the specified connection parameters,
+// New creates a new Redis client with the specified connection parameters,
 // and validates the connection by issuing a PING command.
 //
 // Parameters:
@@ -34,7 +34,7 @@ func (c *client) Close() error {
 // Returns:
 //   - A pointer to a Redis client.
 //   - An error if the connection could not be established or the PING fails.
-func NewClient(ctx context.Context, addr, username, password string, db int) (*client, error) {
+func New(ctx context.Context, addr, username, password string, db int) (*client, error) {
 	conn := redis.NewClient(&redis.Options{
 		Addr:     addr,
 		Username: username,
