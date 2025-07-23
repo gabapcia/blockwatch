@@ -1,8 +1,9 @@
-package bootstrap
+package messaging
 
 import (
 	"context"
 	"fmt"
+	"io"
 	"reflect"
 	"strings"
 
@@ -83,115 +84,6 @@ var messagingFactories = map[string]messagingFactory{
 	},
 }
 
-// buildDefaultMessagings instantiates default messaging connections from the global configuration.
-//
-// It reflects over the fields of the Engines struct, identifies which backends are configured,
-// and uses the corresponding factory to create shared instances.
-//
-// Parameters:
-//   - ctx: request-scoped context for cancellation.
-//   - engines: the global Engines struct populated from configuration.
-//
-// Returns:
-//   - A map of engine names to their initialized instances.
-//   - An error if any engine has no registered factory or fails during instantiation.
-func buildDefaultMessagings(ctx context.Context, engines messaging.Engines) (map[string]any, error) {
-	defaults := make(map[string]any)
-
-	engineValues := reflect.ValueOf(engines)
-	engineTypes := reflect.TypeOf(engines)
-
-	for i := 0; i < engineValues.NumField(); i++ {
-		configValue := engineValues.Field(i)
-		if configValue.Kind() != reflect.Ptr || configValue.IsNil() {
-			continue
-		}
-
-		engineName := strings.ToUpper(engineTypes.Field(i).Name)
-		factory, ok := messagingFactories[engineName]
-		if !ok {
-			return nil, fmt.Errorf("no messaging factory registered for engine %q", engineName)
-		}
-
-		conn, err := factory.BuildConnection(ctx, configValue.Elem().Interface())
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize messaging engine %q: %w", engineName, err)
-		}
-
-		defaults[engineName] = conn
-	}
-
-	return defaults, nil
-}
-
-// resolveMessaging selects and returns a messaging instance adapted to the desired interface.
-//
-// It supports two selection mechanisms:
-//   - If Picker.Engine is set, it uses a default instance from the provided map.
-//   - If InlineConfig is provided, it dynamically creates a new instance using the factory.
-//
-// After connection, the method adapts it to the requested interface T using the appropriate
-// function from the InterfaceAdapters map.
-//
-// Parameters:
-//   - ctx: request-scoped context for cancellation.
-//   - picker: configuration for selecting or creating a messaging engine.
-//   - defaults: optional map of shared default instances (from buildDefaultMessagings).
-//
-// Returns:
-//   - The resolved messaging interface of type T.
-//   - An error if resolution fails, the adapter is not found, or the cast is invalid.
-func resolveMessaging[T any](ctx context.Context, picker messaging.Picker, defaults map[string]any) (T, error) {
-	var (
-		zero       T
-		engineName = strings.ToUpper(picker.Engine)
-	)
-
-	if engineName != "" {
-		conn, found := defaults[engineName]
-		if !found {
-			return zero, fmt.Errorf("no default messaging instance found for engine %q", engineName)
-		}
-
-		pubCfg, err := extractPublisherConfig(engineName, picker.MessagePublisher)
-		if err != nil {
-			return zero, err
-		}
-
-		return adaptMessaging[T](conn, pubCfg, engineName)
-	}
-
-	inlineVal := reflect.ValueOf(picker.InlineConfig)
-	inlineType := reflect.TypeOf(picker.InlineConfig)
-
-	for i := 0; i < inlineVal.NumField(); i++ {
-		field := inlineVal.Field(i)
-		if field.Kind() != reflect.Ptr || field.IsNil() {
-			continue
-		}
-
-		engineName := strings.ToUpper(inlineType.Field(i).Name)
-		factory, ok := messagingFactories[engineName]
-		if !ok {
-			return zero, fmt.Errorf("no messaging factory registered for engine %q", engineName)
-		}
-
-		conn, err := factory.BuildConnection(ctx, field.Elem().Interface())
-		if err != nil {
-			return zero, fmt.Errorf("failed to create inline messaging instance for engine %q: %w", engineName, err)
-		}
-
-		pubCfg, err := extractPublisherConfig(engineName, picker.MessagePublisher)
-		if err != nil {
-			return zero, err
-		}
-
-		return adaptMessaging[T](conn, pubCfg, engineName)
-	}
-
-	return zero, fmt.Errorf("no valid messaging engine configuration provided")
-}
-
 // adaptMessaging converts a messaging connection to the requested interface T.
 //
 // It uses the InterfaceAdapters map of the given engine to find the corresponding adapter.
@@ -231,14 +123,14 @@ func adaptMessaging[T any](conn, pubCfg any, engineName string) (T, error) {
 
 // extractPublisherConfig returns the appropriate publisher config for the specified engine.
 //
-// It reflects over the MessagePublisher struct and matches the field by name.
+// It reflects over the MessagePublisher struct and matches the field by name (case-insensitive).
 //
 // Parameters:
-//   - engineName: name of the messaging engine (must match struct field).
-//   - publishers: MessagePublisher struct containing backend configs.
+//   - engineName: name of the messaging engine (must match a struct field).
+//   - publishers: MessagePublisher struct containing backend-specific configurations.
 //
 // Returns:
-//   - The non-nil publisher config (e.g., RedisPublisher, RabbitMQPublisher).
+//   - The matched publisher configuration (e.g., RedisPublisher, RabbitMQPublisher).
 //   - An error if no matching configuration is found.
 func extractPublisherConfig(engineName string, publishers messaging.MessagePublisher) (any, error) {
 	pubVal := reflect.ValueOf(publishers)
@@ -253,4 +145,75 @@ func extractPublisherConfig(engineName string, publishers messaging.MessagePubli
 	}
 
 	return nil, fmt.Errorf("no publisher configuration found for engine %q", engineName)
+}
+
+// Resolve selects and returns a messaging instance adapted to the desired interface.
+//
+// It supports two selection mechanisms:
+//   - If Picker.Engine is set, it uses a default instance from the global map.
+//   - If InlineConfig is provided, it dynamically creates a new instance using the appropriate factory.
+//
+// After the connection is resolved, it is adapted to the requested interface T using the
+// matching function from the InterfaceAdapters map.
+//
+// Parameters:
+//   - ctx: request-scoped context for cancellation.
+//   - picker: configuration containing either Engine (default) or InlineConfig.
+//
+// Returns:
+//   - The resolved messaging instance implementing interface T.
+//   - An error if resolution fails, the adapter is not registered, or casting fails.
+func Resolve[T any](ctx context.Context, picker messaging.Picker) (T, error) {
+	var (
+		zero       T
+		engineName = strings.ToUpper(picker.Engine)
+	)
+
+	if engineName != "" {
+		conn, found := defaults[engineName]
+		if !found {
+			return zero, fmt.Errorf("no default messaging instance found for engine %q", engineName)
+		}
+
+		pubCfg, err := extractPublisherConfig(engineName, picker.MessagePublisher)
+		if err != nil {
+			return zero, err
+		}
+
+		return adaptMessaging[T](conn, pubCfg, engineName)
+	}
+
+	inlineVal := reflect.ValueOf(picker.InlineConfig)
+	inlineType := reflect.TypeOf(picker.InlineConfig)
+
+	for i := 0; i < inlineVal.NumField(); i++ {
+		field := inlineVal.Field(i)
+		if field.Kind() != reflect.Ptr || field.IsNil() {
+			continue
+		}
+
+		engineName := strings.ToUpper(inlineType.Field(i).Name)
+		factory, ok := messagingFactories[engineName]
+		if !ok {
+			return zero, fmt.Errorf("no messaging factory registered for engine %q", engineName)
+		}
+
+		conn, err := factory.BuildConnection(ctx, field.Elem().Interface())
+		if err != nil {
+			return zero, fmt.Errorf("failed to create inline messaging instance for engine %q: %w", engineName, err)
+		}
+
+		if closer, ok := conn.(io.Closer); ok {
+			openedConnections = append(openedConnections, closer)
+		}
+
+		pubCfg, err := extractPublisherConfig(engineName, picker.MessagePublisher)
+		if err != nil {
+			return zero, err
+		}
+
+		return adaptMessaging[T](conn, pubCfg, engineName)
+	}
+
+	return zero, fmt.Errorf("no valid messaging engine configuration provided")
 }
