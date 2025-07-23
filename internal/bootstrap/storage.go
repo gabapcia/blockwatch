@@ -2,13 +2,13 @@ package bootstrap
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"strings"
 
 	"github.com/gabapcia/blockwatch/internal/infra/storage/postgresql"
 	"github.com/gabapcia/blockwatch/internal/infra/storage/redis"
 	"github.com/gabapcia/blockwatch/internal/pkg/config/storage"
-	"github.com/gabapcia/blockwatch/internal/pkg/logger"
 )
 
 // storageFactory defines the constructor signature for supported storage backends.
@@ -51,14 +51,13 @@ func init() {
 // and uses the corresponding factory to create shared instances.
 //
 // Parameters:
-//   - ctx: request-scoped context for cancellation and logging.
+//   - ctx: request-scoped context for cancellation.
 //   - enginesConfig: the global Engines struct populated from configuration.
 //
 // Returns:
 //   - A map of engine names to their initialized instances.
-//
-// Panics (via logger.Fatal) if a configured engine has no registered factory or fails during instantiation.
-func buildDefaultStorages(ctx context.Context, enginesConfig storage.Engines) map[string]any {
+//   - An error if any engine has no registered factory or fails during instantiation.
+func buildDefaultStorages(ctx context.Context, enginesConfig storage.Engines) (map[string]any, error) {
 	defaultInstances := make(map[string]any)
 
 	structVal := reflect.ValueOf(enginesConfig)
@@ -74,18 +73,18 @@ func buildDefaultStorages(ctx context.Context, enginesConfig storage.Engines) ma
 
 		constructor, exists := storageFactories[engineName]
 		if !exists {
-			logger.Fatal(ctx, "No factory registered for storage engine", "engine", engineName)
+			return nil, fmt.Errorf("no factory registered for storage engine %q", engineName)
 		}
 
 		instance, err := constructor(ctx, fieldVal.Elem().Interface())
 		if err != nil {
-			logger.Fatal(ctx, "Failed to initialize storage engine", "engine", engineName, "error", err)
+			return nil, fmt.Errorf("failed to initialize storage engine %q: %w", engineName, err)
 		}
 
 		defaultInstances[engineName] = instance
 	}
 
-	return defaultInstances
+	return defaultInstances, nil
 }
 
 // resolveStorage selects and returns a storage instance for a use case based on a Picker.
@@ -95,31 +94,32 @@ func buildDefaultStorages(ctx context.Context, enginesConfig storage.Engines) ma
 //   - If InlineConfig is provided, it dynamically creates a new instance using the factory.
 //
 // Parameters:
-//   - ctx: request-scoped context for cancellation and logging.
+//   - ctx: request-scoped context for cancellation.
 //   - picker: configuration for selecting or creating a storage engine.
 //   - defaults: map of shared default instances, usually created by buildDefaultStorages.
 //
 // Returns:
 //   - The resolved storage instance, casted to the generic type S.
-//   - A boolean indicating whether the cast succeeded (always true unless Fatal is bypassed).
-//
-// Panics (via logger.Fatal) if selection fails, the factory is not registered,
-// the creation fails, or the type cast is invalid.
-func resolveStorage[S any](ctx context.Context, picker storage.Picker, defaults map[string]any) (engine S, ok bool) {
-	engineKey := strings.ToUpper(picker.Engine)
+//   - An error if selection fails, the factory is not registered, the creation fails,
+//     or the type cast is invalid.
+func resolveStorage[S any](ctx context.Context, picker storage.Picker, defaults map[string]any) (S, error) {
+	var (
+		zero      S
+		engineKey = strings.ToUpper(picker.Engine)
+	)
 
 	if engineKey != "" {
 		instance, found := defaults[engineKey]
 		if !found {
-			logger.Fatal(ctx, "No default instance found for selected engine", "engine", engineKey)
+			return zero, fmt.Errorf("no default instance found for selected engine %q", engineKey)
 		}
 
-		engine, ok = instance.(S)
+		engine, ok := instance.(S)
 		if !ok {
-			logger.Fatal(ctx, "Failed to cast default storage instance to requested type", "engine", engineKey)
+			return zero, fmt.Errorf("default instance for engine %q has unexpected type", engineKey)
 		}
 
-		return
+		return engine, nil
 	}
 
 	inlineStruct := reflect.ValueOf(picker.InlineConfig)
@@ -135,22 +135,21 @@ func resolveStorage[S any](ctx context.Context, picker storage.Picker, defaults 
 
 		constructor, exists := storageFactories[engineName]
 		if !exists {
-			logger.Fatal(ctx, "No factory registered for inline-configured storage engine", "engine", engineName)
+			return zero, fmt.Errorf("no factory registered for inline-configured engine %q", engineName)
 		}
 
 		instance, err := constructor(ctx, inlineField.Elem().Interface())
 		if err != nil {
-			logger.Fatal(ctx, "Failed to create inline storage instance", "engine", engineName, "error", err)
+			return zero, fmt.Errorf("failed to create inline instance for engine %q: %w", engineName, err)
 		}
 
-		engine, ok = instance.(S)
+		engine, ok := instance.(S)
 		if !ok {
-			logger.Fatal(ctx, "Failed to cast inline storage instance to requested type", "engine", engineName)
+			return zero, fmt.Errorf("inline instance for engine %q has unexpected type", engineName)
 		}
 
-		return
+		return engine, nil
 	}
 
-	logger.Fatal(ctx, "No valid storage engine configuration provided")
-	return
+	return zero, fmt.Errorf("no valid storage engine configuration provided")
 }
