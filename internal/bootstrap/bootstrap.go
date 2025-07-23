@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/gabapcia/blockwatch/internal/blockproc"
 	"github.com/gabapcia/blockwatch/internal/bootstrap/messaging"
 	"github.com/gabapcia/blockwatch/internal/bootstrap/storage"
 	"github.com/gabapcia/blockwatch/internal/chainstream"
@@ -18,12 +19,21 @@ import (
 	"github.com/gabapcia/blockwatch/internal/walletwatch"
 )
 
+// bootstrap aggregates all services that must be initialized at application startup.
+//
+// It provides a convenient container to access core modules such as walletwatch,
+// walletregistry, chainstream, and block processing services.
 type bootstrap struct {
 	chainstream    chainstream.Service
 	walletwatch    walletwatch.Service
 	walletregistry walletregistry.Service
+	blockproc      blockproc.Service
 }
 
+// Close shuts down the initialized services by closing storage and messaging resources.
+//
+// Returns:
+//   - An aggregated error if any service fails to close properly.
 func (b *bootstrap) Close() error {
 	return errors.Join(
 		storage.Close(),
@@ -31,6 +41,20 @@ func (b *bootstrap) Close() error {
 	)
 }
 
+// New initializes the full application bootstrap with all configured services.
+//
+// It performs the following steps:
+//  1. Initializes shared storage and messaging backends.
+//  2. Sets up core services: ChainStream, WalletWatch, and WalletRegistry.
+//  3. Constructs the block processor from ChainStream and WalletWatch.
+//
+// Parameters:
+//   - ctx: request-scoped context for cancellation.
+//   - config: root configuration struct loaded from environment or file.
+//
+// Returns:
+//   - A fully initialized *bootstrap instance.
+//   - An error if any initialization step fails.
 func New(ctx context.Context, config config.Config) (*bootstrap, error) {
 	if err := storage.Init(ctx, config.Engines.Storage); err != nil {
 		return nil, err
@@ -61,6 +85,7 @@ func New(ctx context.Context, config config.Config) (*bootstrap, error) {
 		chainstream:    chainstream,
 		walletwatch:    walletwatch,
 		walletregistry: walletregistry,
+		blockproc:      blockproc.New(chainstream, walletwatch),
 	}, nil
 }
 
