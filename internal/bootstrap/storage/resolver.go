@@ -9,7 +9,7 @@ import (
 
 	"github.com/gabapcia/blockwatch/internal/infra/storage/postgresql"
 	"github.com/gabapcia/blockwatch/internal/infra/storage/redis"
-	"github.com/gabapcia/blockwatch/internal/pkg/config/storage"
+	storageconfig "github.com/gabapcia/blockwatch/internal/pkg/config/storage"
 )
 
 // storageFactory defines the constructor signature for supported storage backends.
@@ -23,24 +23,24 @@ type storageFactory func(ctx context.Context, config any) (any, error)
 // Keys must be uppercase engine identifiers (e.g., "REDIS", "POSTGRESQL").
 //
 // To support a new engine:
-//  1. Define the connection struct in config/storage.
+//  1. Define the connection struct in config/storageconfig.
 //  2. Implement the corresponding client constructor.
 //  3. Add a new entry here with the appropriate conversion and instantiation logic.
 //
 // Example:
 //
 //	"MONGODB": func(ctx context.Context, cfg any) (any, error) {
-//		mongoCfg := cfg.(storage.MongoDB)
+//		mongoCfg := cfg.(storageconfig.MongoDB)
 //		return mongodb.New(ctx, mongoCfg.URI)
 //	},
 var storageFactories = map[string]storageFactory{
 	"REDIS": func(ctx context.Context, cfg any) (any, error) {
-		redisCfg := cfg.(storage.Redis)
+		redisCfg := cfg.(storageconfig.Redis)
 		return redis.New(ctx, redisCfg.Address, redisCfg.Username, redisCfg.Password, redisCfg.DB)
 	},
 
 	"POSTGRESQL": func(ctx context.Context, cfg any) (any, error) {
-		pgCfg := cfg.(storage.PostgreSQL)
+		pgCfg := cfg.(storageconfig.PostgreSQL)
 		return postgresql.New(ctx, pgCfg.DSN)
 	},
 }
@@ -59,7 +59,7 @@ var storageFactories = map[string]storageFactory{
 //   - An instance of type S representing the resolved storage backend.
 //   - An error if the engine is unsupported, fails during construction,
 //     or the result does not match the expected type.
-func Resolve[S any](ctx context.Context, picker storage.Picker) (S, error) {
+func Resolve[S any](ctx context.Context, picker storageconfig.Picker) (S, error) {
 	var (
 		zero      S
 		engineKey = strings.ToUpper(picker.Engine)

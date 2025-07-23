@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/gabapcia/blockwatch/internal/pkg/config/messaging"
+	messagingconfig "github.com/gabapcia/blockwatch/internal/pkg/config/messaging"
 )
 
 // defaults holds the default shared messaging client instances,
@@ -48,7 +48,7 @@ func typeOf[T any]() reflect.Type {
 //
 // Returns:
 //   - An error if a factory is missing or connection creation fails.
-func Init(ctx context.Context, engines messaging.Engines) error {
+func Init(ctx context.Context, engines messagingconfig.Engines) error {
 	defaults = make(map[string]any)
 	openedConnections = make([]io.Closer, 0)
 

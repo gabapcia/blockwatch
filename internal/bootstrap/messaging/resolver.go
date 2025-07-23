@@ -10,7 +10,7 @@ import (
 	"github.com/gabapcia/blockwatch/internal/chainstream"
 	"github.com/gabapcia/blockwatch/internal/infra/messaging/rabbitmq"
 	"github.com/gabapcia/blockwatch/internal/infra/messaging/redis"
-	"github.com/gabapcia/blockwatch/internal/pkg/config/messaging"
+	messagingconfig "github.com/gabapcia/blockwatch/internal/pkg/config/messaging"
 	"github.com/gabapcia/blockwatch/internal/walletwatch"
 )
 
@@ -30,7 +30,7 @@ type messagingFactory struct {
 // Keys must be uppercase engine identifiers (e.g., "REDIS", "RABBITMQ").
 //
 // To support a new engine:
-//  1. Define the connection struct and publisher struct in config/messaging.
+//  1. Define the connection struct and publisher struct in config/messagingconfig.
 //  2. Implement the corresponding client with adapter methods.
 //  3. Add a new entry here using BuildConnection and InterfaceAdapters.
 //
@@ -38,12 +38,12 @@ type messagingFactory struct {
 //
 //	"KAFKA": {
 //		BuildConnection: func(ctx context.Context, cfg any) (any, error) {
-//			kafkaCfg := cfg.(messaging.KafkaConnection)
+//			kafkaCfg := cfg.(messagingconfig.KafkaConnection)
 //			return kafka.NewClient(ctx, kafkaCfg.Brokers)
 //		},
 //		InterfaceAdapters: map[reflect.Type]func(conn, pubCfg any) any{
 //			typeOf[events.Dispatcher](): func(conn, pubCfg any) any {
-//				cfg := pubCfg.(messaging.KafkaPublisher)
+//				cfg := pubCfg.(messagingconfig.KafkaPublisher)
 //				return conn.(*kafka.Client).AsDispatcher(cfg.Topic)
 //			},
 //		},
@@ -51,16 +51,16 @@ type messagingFactory struct {
 var messagingFactories = map[string]messagingFactory{
 	"REDIS": {
 		BuildConnection: func(ctx context.Context, cfg any) (any, error) {
-			redisCfg := cfg.(messaging.RedisConnection)
+			redisCfg := cfg.(messagingconfig.RedisConnection)
 			return redis.New(ctx, redisCfg.Address, redisCfg.Username, redisCfg.Password, redisCfg.DB)
 		},
 		InterfaceAdapters: map[reflect.Type]func(conn, pubCfg any) any{
 			typeOf[walletwatch.TransactionNotifier](): func(conn, pubCfg any) any {
-				cfg := pubCfg.(messaging.RedisPublisher)
+				cfg := pubCfg.(messagingconfig.RedisPublisher)
 				return conn.(*redis.Client).AsWalletwatchTransactionNotifier(cfg.Stream)
 			},
 			typeOf[chainstream.DispatchFailureNotifier](): func(conn, pubCfg any) any {
-				cfg := pubCfg.(messaging.RedisPublisher)
+				cfg := pubCfg.(messagingconfig.RedisPublisher)
 				return conn.(*redis.Client).AsChainstreamDispatchFailureNotifier(cfg.Stream)
 			},
 		},
@@ -68,16 +68,16 @@ var messagingFactories = map[string]messagingFactory{
 
 	"RABBITMQ": {
 		BuildConnection: func(ctx context.Context, cfg any) (any, error) {
-			rabbitCfg := cfg.(messaging.RabbitMQConnection)
+			rabbitCfg := cfg.(messagingconfig.RabbitMQConnection)
 			return rabbitmq.New(ctx, rabbitCfg.URI)
 		},
 		InterfaceAdapters: map[reflect.Type]func(conn, pubCfg any) any{
 			typeOf[walletwatch.TransactionNotifier](): func(conn, pubCfg any) any {
-				cfg := pubCfg.(messaging.RabbitMQPublisher)
+				cfg := pubCfg.(messagingconfig.RabbitMQPublisher)
 				return conn.(*rabbitmq.Client).AsWalletwatchTransactionNotifier(cfg.Exchange, cfg.RoutingKey)
 			},
 			typeOf[chainstream.DispatchFailureNotifier](): func(conn, pubCfg any) any {
-				cfg := pubCfg.(messaging.RabbitMQPublisher)
+				cfg := pubCfg.(messagingconfig.RabbitMQPublisher)
 				return conn.(*rabbitmq.Client).AsChainstreamDispatchFailureNotifier(cfg.Exchange, cfg.RoutingKey)
 			},
 		},
@@ -132,7 +132,7 @@ func adaptMessaging[T any](conn, pubCfg any, engineName string) (T, error) {
 // Returns:
 //   - The matched publisher configuration (e.g., RedisPublisher, RabbitMQPublisher).
 //   - An error if no matching configuration is found.
-func extractPublisherConfig(engineName string, publishers messaging.MessagePublisher) (any, error) {
+func extractPublisherConfig(engineName string, publishers messagingconfig.MessagePublisher) (any, error) {
 	pubVal := reflect.ValueOf(publishers)
 	pubType := reflect.TypeOf(publishers)
 
@@ -163,7 +163,7 @@ func extractPublisherConfig(engineName string, publishers messaging.MessagePubli
 // Returns:
 //   - The resolved messaging instance implementing interface T.
 //   - An error if resolution fails, the adapter is not registered, or casting fails.
-func Resolve[T any](ctx context.Context, picker messaging.Picker) (T, error) {
+func Resolve[T any](ctx context.Context, picker messagingconfig.Picker) (T, error) {
 	var (
 		zero       T
 		engineName = strings.ToUpper(picker.Engine)

@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/gabapcia/blockwatch/internal/pkg/config/storage"
+	storageconfig "github.com/gabapcia/blockwatch/internal/pkg/config/storage"
 )
 
 // defaults holds the default initialized storage instances keyed by engine name.
@@ -32,7 +32,7 @@ var openedConnections []io.Closer
 // Returns:
 //   - nil on success.
 //   - An error if any engine is not supported or fails during initialization.
-func Init(ctx context.Context, enginesConfig storage.Engines) error {
+func Init(ctx context.Context, enginesConfig storageconfig.Engines) error {
 	defaults = make(map[string]any)
 	openedConnections = make([]io.Closer, 0)
 
