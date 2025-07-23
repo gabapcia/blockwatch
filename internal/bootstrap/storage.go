@@ -13,36 +13,31 @@ import (
 
 // storageFactory defines the constructor signature for supported storage backends.
 //
-// Each registered factory is responsible for creating a new instance of the
-// storage backend using the provided configuration.
+// Each factory is responsible for creating a new instance of the storage backend
+// using the provided configuration (e.g., DSN or connection options).
 type storageFactory func(ctx context.Context, config any) (any, error)
 
-// storageFactories maps each supported storage engine to its corresponding factory function.
+// storageFactories maps supported storage engine names to their corresponding factory functions.
 //
-// Keys must match the uppercase engine identifiers used in configuration,
-// such as "REDIS" or "POSTGRESQL".
-var storageFactories = map[string]storageFactory{}
-
-// init registers the available storage engines and their factory constructors.
-//
-// To support a new storage backend, add its factory function here.
+// Keys must be uppercase engine identifiers (e.g., "REDIS", "POSTGRESQL").
+// To support a new storage engine, add its factory directly to this map.
 //
 // Example:
 //
-//	storageFactories["MONGODB"] = func(ctx context.Context, cfg any) (any, error) {
+//	"MONGODB": func(ctx context.Context, cfg any) (any, error) {
 //		mongoCfg := cfg.(storage.MongoDB)
-//		return mongodb.NewClient(ctx, mongoCfg.URI)
-//	}
-func init() {
-	storageFactories["REDIS"] = func(ctx context.Context, cfg any) (any, error) {
+//		return mongodb.New(ctx, mongoCfg.URI)
+//	},
+var storageFactories = map[string]storageFactory{
+	"REDIS": func(ctx context.Context, cfg any) (any, error) {
 		redisCfg := cfg.(storage.Redis)
-		return redis.NewClient(ctx, redisCfg.Address, redisCfg.Username, redisCfg.Password, redisCfg.DB)
-	}
+		return redis.New(ctx, redisCfg.Address, redisCfg.Username, redisCfg.Password, redisCfg.DB)
+	},
 
-	storageFactories["POSTGRESQL"] = func(ctx context.Context, cfg any) (any, error) {
+	"POSTGRESQL": func(ctx context.Context, cfg any) (any, error) {
 		pgCfg := cfg.(storage.PostgreSQL)
 		return postgresql.New(ctx, pgCfg.DSN)
-	}
+	},
 }
 
 // buildDefaultStorages instantiates default storage engines from the global configuration.
