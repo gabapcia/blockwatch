@@ -16,6 +16,9 @@ all: true
 recursive: true
 force-file-write: true
 
+exclude-subpkg-regex:
+  - "github.com/gabapcia/blockwatch/internal/infra/storage/postgresql/querier(/.*)?"
+
 packages:
   github.com/gabapcia/blockwatch:
     config: *default-config

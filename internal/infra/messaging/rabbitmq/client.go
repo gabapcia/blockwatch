@@ -7,6 +7,7 @@ import (
 
 	"github.com/gabapcia/blockwatch/internal/chainstream"
 	"github.com/gabapcia/blockwatch/internal/walletwatch"
+
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -77,4 +78,4 @@ func New(ctx context.Context, uri string) (*client, error) {
 }
 
 // Compile-time assertion to ensure client implements the Client interface.
-var _ Client = new(client)
+var _ Client = (*client)(nil)

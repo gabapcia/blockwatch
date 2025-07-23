@@ -11,6 +11,8 @@ import (
 	"github.com/rabbitmq/amqp091-go"
 )
 
+type WalletwatchTransactionNotifier = walletwatch.TransactionNotifier
+
 // walletwatchTransactionNotifier implements the TransactionNotifier interface
 // and publishes wallet transactions to a RabbitMQ exchange.
 type walletwatchTransactionNotifier struct {
@@ -94,4 +96,4 @@ func (c *walletwatchTransactionNotifier) NotifyTransactions(ctx context.Context,
 }
 
 // Compile-time assertion to ensure walletwatchTransactionNotifier implements TransactionNotifier.
-var _ walletwatch.TransactionNotifier = new(walletwatchTransactionNotifier)
+var _ walletwatch.TransactionNotifier = (*walletwatchTransactionNotifier)(nil)

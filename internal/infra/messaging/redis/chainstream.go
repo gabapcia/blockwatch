@@ -8,6 +8,8 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+type ChainstreamDispatchFailureNotifier = chainstream.DispatchFailureNotifier
+
 // chainstreamDispatchFailureNotifier implements chainstream.DispatchFailureNotifier
 // by sending dispatch failure information to a Redis Stream.
 type chainstreamDispatchFailureNotifier struct {
@@ -54,4 +56,4 @@ func (c *chainstreamDispatchFailureNotifier) NotifyDispatchFailure(ctx context.C
 }
 
 // Compile-time check to ensure chainstreamDispatchFailureNotifier implements DispatchFailureNotifier.
-var _ chainstream.DispatchFailureNotifier = new(chainstreamDispatchFailureNotifier)
+var _ chainstream.DispatchFailureNotifier = (*chainstreamDispatchFailureNotifier)(nil)

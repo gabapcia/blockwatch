@@ -77,4 +77,4 @@ func New(ctx context.Context, addr, username, password string, db int) (*client,
 }
 
 // Compile-time assertion to ensure client implements Client interface.
-var _ Client = new(client)
+var _ Client = (*client)(nil)

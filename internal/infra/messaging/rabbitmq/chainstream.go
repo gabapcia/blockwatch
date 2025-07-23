@@ -12,6 +12,8 @@ import (
 	"github.com/rabbitmq/amqp091-go"
 )
 
+type ChainstreamDispatchFailureNotifier = chainstream.DispatchFailureNotifier
+
 // chainstreamDispatchFailureNotifier implements chainstream.DispatchFailureNotifier
 // and publishes unrecoverable block dispatch failures to a RabbitMQ exchange.
 type chainstreamDispatchFailureNotifier struct {
@@ -85,4 +87,4 @@ func (c *chainstreamDispatchFailureNotifier) NotifyDispatchFailure(ctx context.C
 }
 
 // Compile-time assertion to ensure the notifier implements the interface.
-var _ chainstream.DispatchFailureNotifier = new(chainstreamDispatchFailureNotifier)
+var _ chainstream.DispatchFailureNotifier = (*chainstreamDispatchFailureNotifier)(nil)

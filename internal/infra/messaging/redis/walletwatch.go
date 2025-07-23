@@ -9,6 +9,8 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+type WalletwatchTransactionNotifier = walletwatch.TransactionNotifier
+
 // walletwatchTransactionNotifier implements walletwatch.TransactionNotifier by
 // publishing transaction notifications to a Redis Stream.
 type walletwatchTransactionNotifier struct {
@@ -74,4 +76,4 @@ func (c *walletwatchTransactionNotifier) NotifyTransactions(ctx context.Context,
 }
 
 // Compile-time check to ensure walletwatchTransactionNotifier implements walletwatch.TransactionNotifier.
-var _ walletwatch.TransactionNotifier = new(walletwatchTransactionNotifier)
+var _ walletwatch.TransactionNotifier = (*walletwatchTransactionNotifier)(nil)
