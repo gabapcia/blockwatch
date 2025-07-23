@@ -297,3 +297,79 @@ func TestHex_IsEmpty(t *testing.T) {
 		assert.False(t, Hex(" abc ").IsEmpty(), "IsEmpty should return false for a non-empty non-hex string")
 	})
 }
+
+func TestHex_String(t *testing.T) {
+	t.Run("valid lowercase hex", func(t *testing.T) {
+		h := Hex("0x1a")
+		result := h.String()
+		assert.Equal(t, "0x1a", result)
+	})
+
+	t.Run("valid uppercase hex", func(t *testing.T) {
+		h := Hex("0XFF")
+		result := h.String()
+		assert.Equal(t, "0XFF", result)
+	})
+
+	t.Run("zero value", func(t *testing.T) {
+		h := Hex("0x0")
+		result := h.String()
+		assert.Equal(t, "0x0", result)
+	})
+
+	t.Run("large hex value", func(t *testing.T) {
+		h := Hex("0xdeadbeef")
+		result := h.String()
+		assert.Equal(t, "0xdeadbeef", result)
+	})
+
+	t.Run("empty hex", func(t *testing.T) {
+		h := Hex("")
+		result := h.String()
+		assert.Equal(t, "", result)
+	})
+
+	t.Run("hex from int conversion", func(t *testing.T) {
+		h := HexFromInt(255)
+		result := h.String()
+		assert.Equal(t, "0xff", result)
+	})
+
+	t.Run("hex from int zero", func(t *testing.T) {
+		h := HexFromInt(0)
+		result := h.String()
+		assert.Equal(t, "0x0", result)
+	})
+
+	t.Run("hex from negative int", func(t *testing.T) {
+		h := HexFromInt(-1)
+		result := h.String()
+		assert.Equal(t, "0x-1", result)
+	})
+
+	t.Run("implements fmt.Stringer interface", func(t *testing.T) {
+		h := Hex("0x42")
+
+		// Test that String() method implements fmt.Stringer interface
+		var stringer interface{} = h
+		_, ok := stringer.(interface{ String() string })
+		assert.True(t, ok, "Hex should implement fmt.Stringer interface")
+	})
+
+	t.Run("preserves original format", func(t *testing.T) {
+		testCases := []string{
+			"0x1a",
+			"0X1A",
+			"0xdeadbeef",
+			"0XDEADBEEF",
+			"0x0",
+			"0X0",
+		}
+
+		for _, original := range testCases {
+			h := Hex(original)
+			result := h.String()
+			assert.Equal(t, original, result, "String() should preserve original format")
+		}
+	})
+}

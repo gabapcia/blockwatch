@@ -76,7 +76,7 @@ func (c *client) UnregisterWallet(ctx context.Context, id walletregistry.WalletI
 }
 
 // Compile-time assertion to ensure *client satisfies the walletregistry.WalletStorage interface
-var _ walletregistry.WalletStorage = new(client)
+var _ walletregistry.WalletStorage = (*client)(nil)
 
 // FilterWatchedWallets implements the walletwatch.WalletStorage interface using Redis sets.
 //
@@ -93,6 +93,11 @@ var _ walletregistry.WalletStorage = new(client)
 //   - A slice containing only the wallet addresses that are actively being watched.
 //   - An error if the Redis query fails or cannot be completed.
 func (c *client) FilterWatchedWallets(ctx context.Context, network string, addresses []string) ([]string, error) {
+	// Return empty slice immediately if no addresses to check
+	if len(addresses) == 0 {
+		return make([]string, 0), nil
+	}
+
 	key := walletStorageKey(network)
 
 	// Convert []string to []any, required by SMIsMember Redis command
@@ -117,4 +122,4 @@ func (c *client) FilterWatchedWallets(ctx context.Context, network string, addre
 }
 
 // Compile-time assertion to ensure *client satisfies the walletwatch.WalletStorage interface
-var _ walletwatch.WalletStorage = new(client)
+var _ walletwatch.WalletStorage = (*client)(nil)

@@ -72,6 +72,13 @@ func (h Hex) Int() int64 {
 	return v
 }
 
+// String returns the string representation of the Hex value.
+// This method implements the fmt.Stringer interface, allowing Hex values
+// to be used directly in string formatting operations like fmt.Printf.
+func (h Hex) String() string {
+	return string(h)
+}
+
 // IsEmpty reports whether the Hex value is empty or contains only whitespace.
 // It returns true if the trimmed Hex string is exactly "", and false otherwise.
 func (h Hex) IsEmpty() bool {

@@ -36,7 +36,7 @@ func chainstreamCheckpointKey(network string) string {
 //   - An error if the Redis operation fails.
 func (c *client) SaveCheckpoint(ctx context.Context, network string, height types.Hex) error {
 	key := chainstreamCheckpointKey(network)
-	return c.conn.Set(ctx, key, height, 0).Err()
+	return c.conn.Set(ctx, key, height.String(), 0).Err()
 }
 
 // LoadLatestCheckpoint retrieves the most recently saved checkpoint for the given network.
@@ -66,4 +66,4 @@ func (c *client) LoadLatestCheckpoint(ctx context.Context, network string) (type
 }
 
 // Compile-time assertion to ensure client implements the CheckpointStorage interface.
-var _ chainstream.CheckpointStorage = new(client)
+var _ chainstream.CheckpointStorage = (*client)(nil)
