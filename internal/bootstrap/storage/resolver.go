@@ -1,8 +1,9 @@
-package bootstrap
+package storage
 
 import (
 	"context"
 	"fmt"
+	"io"
 	"reflect"
 	"strings"
 
@@ -20,7 +21,11 @@ type storageFactory func(ctx context.Context, config any) (any, error)
 // storageFactories maps supported storage engine names to their corresponding factory functions.
 //
 // Keys must be uppercase engine identifiers (e.g., "REDIS", "POSTGRESQL").
-// To support a new storage engine, add its factory directly to this map.
+//
+// To support a new engine:
+//  1. Define the connection struct in config/storage.
+//  2. Implement the corresponding client constructor.
+//  3. Add a new entry here with the appropriate conversion and instantiation logic.
 //
 // Example:
 //
@@ -40,64 +45,21 @@ var storageFactories = map[string]storageFactory{
 	},
 }
 
-// buildDefaultStorages instantiates default storage engines from the global configuration.
+// Resolve selects and returns a storage instance adapted to the desired interface.
 //
-// It reflects over the fields of the Engines struct, identifies which backends are configured,
-// and uses the corresponding factory to create shared instances.
-//
-// Parameters:
-//   - ctx: request-scoped context for cancellation.
-//   - enginesConfig: the global Engines struct populated from configuration.
-//
-// Returns:
-//   - A map of engine names to their initialized instances.
-//   - An error if any engine has no registered factory or fails during instantiation.
-func buildDefaultStorages(ctx context.Context, enginesConfig storage.Engines) (map[string]any, error) {
-	defaultInstances := make(map[string]any)
-
-	structVal := reflect.ValueOf(enginesConfig)
-	structType := reflect.TypeOf(enginesConfig)
-
-	for i := 0; i < structVal.NumField(); i++ {
-		fieldVal := structVal.Field(i)
-		if fieldVal.Kind() != reflect.Ptr || fieldVal.IsNil() {
-			continue
-		}
-
-		engineName := strings.ToUpper(structType.Field(i).Name)
-
-		constructor, exists := storageFactories[engineName]
-		if !exists {
-			return nil, fmt.Errorf("no factory registered for storage engine %q", engineName)
-		}
-
-		instance, err := constructor(ctx, fieldVal.Elem().Interface())
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize storage engine %q: %w", engineName, err)
-		}
-
-		defaultInstances[engineName] = instance
-	}
-
-	return defaultInstances, nil
-}
-
-// resolveStorage selects and returns a storage instance for a use case based on a Picker.
-//
-// It supports two selection mechanisms:
-//   - If Picker.Engine is set, it looks up the corresponding default instance.
-//   - If InlineConfig is provided, it dynamically creates a new instance using the factory.
+// It supports two resolution mechanisms:
+//   - If Picker.Engine is set, it returns the corresponding default instance from the map.
+//   - If InlineConfig is provided, it dynamically instantiates a new storage engine.
 //
 // Parameters:
 //   - ctx: request-scoped context for cancellation.
-//   - picker: configuration for selecting or creating a storage engine.
-//   - defaults: map of shared default instances, usually created by buildDefaultStorages.
+//   - picker: configuration object for selecting or creating the storage engine.
 //
 // Returns:
-//   - The resolved storage instance, casted to the generic type S.
-//   - An error if selection fails, the factory is not registered, the creation fails,
-//     or the type cast is invalid.
-func resolveStorage[S any](ctx context.Context, picker storage.Picker, defaults map[string]any) (S, error) {
+//   - An instance of type S representing the resolved storage backend.
+//   - An error if the engine is unsupported, fails during construction,
+//     or the result does not match the expected type.
+func Resolve[S any](ctx context.Context, picker storage.Picker) (S, error) {
 	var (
 		zero      S
 		engineKey = strings.ToUpper(picker.Engine)
@@ -136,6 +98,10 @@ func resolveStorage[S any](ctx context.Context, picker storage.Picker, defaults 
 		instance, err := constructor(ctx, inlineField.Elem().Interface())
 		if err != nil {
 			return zero, fmt.Errorf("failed to create inline instance for engine %q: %w", engineName, err)
+		}
+
+		if closer, ok := instance.(io.Closer); ok {
+			openedConnections = append(openedConnections, closer)
 		}
 
 		engine, ok := instance.(S)
