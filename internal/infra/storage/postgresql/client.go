@@ -4,12 +4,23 @@ import (
 	"context"
 	"io"
 
+	"github.com/gabapcia/blockwatch/internal/chainstream"
 	"github.com/gabapcia/blockwatch/internal/infra/storage/postgresql/querier/chainstreamcheckpoint"
 	"github.com/gabapcia/blockwatch/internal/infra/storage/postgresql/querier/monitoredwallets"
 	"github.com/gabapcia/blockwatch/internal/infra/storage/postgresql/querier/walletwatchidempotency"
+	"github.com/gabapcia/blockwatch/internal/walletregistry"
+	"github.com/gabapcia/blockwatch/internal/walletwatch"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+type Client interface {
+	io.Closer
+	chainstream.CheckpointStorage
+	walletregistry.WalletStorage
+	walletwatch.WalletStorage
+	walletwatch.IdempotencyGuard
+}
 
 // client provides access to PostgreSQL-based implementations of internal storage interfaces.
 //
@@ -54,5 +65,5 @@ func New(ctx context.Context, dsn string) (*client, error) {
 	}, nil
 }
 
-// Compile-time assertion to ensure client implements io.Closer.
-var _ io.Closer = new(client)
+// Compile-time assertion to ensure client implements Client.
+var _ Client = (*client)(nil)
