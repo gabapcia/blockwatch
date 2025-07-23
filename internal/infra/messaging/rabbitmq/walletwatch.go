@@ -21,7 +21,7 @@ type walletwatchTransactionNotifier struct {
 
 // AsWalletwatchTransactionNotifier returns a new instance of walletwatchTransactionNotifier,
 // which is responsible for publishing walletwatch transactions using the given exchange and routing key.
-func (c *Client) AsWalletwatchTransactionNotifier(exchange, routingKey string) *walletwatchTransactionNotifier {
+func (c *client) AsWalletwatchTransactionNotifier(exchange, routingKey string) walletwatch.TransactionNotifier {
 	return &walletwatchTransactionNotifier{
 		channel:    c.channel,
 		exchange:   exchange,

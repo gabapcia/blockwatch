@@ -21,7 +21,7 @@ type walletwatchTransactionNotifier struct {
 //
 // Parameters:
 //   - stream: the name of the Redis Stream to which notifications will be sent.
-func (c *Client) AsWalletwatchTransactionNotifier(stream string) *walletwatchTransactionNotifier {
+func (c *client) AsWalletwatchTransactionNotifier(stream string) walletwatch.TransactionNotifier {
 	return &walletwatchTransactionNotifier{
 		conn:   c.conn,
 		stream: stream,

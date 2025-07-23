@@ -4,36 +4,62 @@ import (
 	"context"
 	"io"
 
+	"github.com/gabapcia/blockwatch/internal/chainstream"
+	"github.com/gabapcia/blockwatch/internal/walletwatch"
+
 	redis "github.com/redis/go-redis/v9"
 )
 
-// Client wraps a Redis connection and provides high-level operations
-// such as stream publishing or closing the connection.
-type Client struct {
-	conn *redis.Client // Underlying Redis Client
+// Client defines the Redis interface used by higher-level services.
+//
+// It wraps the low-level Redis connection and exposes adapter methods
+// for domain-specific use cases such as:
+//   - walletwatch.TransactionNotifier
+//   - chainstream.DispatchFailureNotifier
+//
+// Implementations must also support graceful shutdown via io.Closer.
+type Client interface {
+	io.Closer
+
+	// AsChainstreamDispatchFailureNotifier returns an adapter that publishes
+	// dispatch failures to the specified Redis stream.
+	AsChainstreamDispatchFailureNotifier(stream string) chainstream.DispatchFailureNotifier
+
+	// AsWalletwatchTransactionNotifier returns an adapter that publishes
+	// transaction events to the specified Redis stream.
+	AsWalletwatchTransactionNotifier(stream string) walletwatch.TransactionNotifier
 }
 
-// Close gracefully closes the Redis connection.
+// client wraps a Redis connection and provides domain-specific adapters.
 //
-// This should be called when the Client is no longer needed.
-func (c *Client) Close() error {
+// It is the default implementation of the Client interface.
+type client struct {
+	conn *redis.Client // Underlying Redis connection
+}
+
+// Close terminates the Redis connection.
+//
+// Should be called during shutdown to release resources.
+func (c *client) Close() error {
 	return c.conn.Close()
 }
 
-// New initializes a new Redis Client with the provided parameters,
-// performs a health check via PING, and returns the wrapped Client.
+// New creates and verifies a new Redis client instance.
+//
+// It initializes the connection using the provided credentials and performs a
+// health check via the PING command before returning the client.
 //
 // Parameters:
-//   - ctx: context used to perform the PING request.
+//   - ctx: request-scoped context for cancellation.
 //   - addr: Redis server address (e.g., "localhost:6379").
-//   - username: optional username for Redis ACL authentication.
-//   - password: password or token used for authentication.
-//   - db: Redis logical database index (typically 0).
+//   - username: optional ACL username (if required).
+//   - password: password or token for authentication.
+//   - db: Redis database index (typically 0).
 //
 // Returns:
-//   - A pointer to the initialized Client.
-//   - An error if the connection or PING test fails.
-func New(ctx context.Context, addr, username, password string, db int) (*Client, error) {
+//   - A fully initialized Client.
+//   - An error if connection or health check fails.
+func New(ctx context.Context, addr, username, password string, db int) (*client, error) {
 	conn := redis.NewClient(&redis.Options{
 		Addr:     addr,
 		Username: username,
@@ -45,10 +71,10 @@ func New(ctx context.Context, addr, username, password string, db int) (*Client,
 		return nil, err
 	}
 
-	return &Client{
+	return &client{
 		conn: conn,
 	}, nil
 }
 
-// Compile-time assertion to ensure Client implements io.Closer.
-var _ io.Closer = new(Client)
+// Compile-time assertion to ensure client implements Client interface.
+var _ Client = new(client)

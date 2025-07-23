@@ -57,11 +57,11 @@ var messagingFactories = map[string]messagingFactory{
 		InterfaceAdapters: map[reflect.Type]func(conn, pubCfg any) any{
 			typeOf[walletwatch.TransactionNotifier](): func(conn, pubCfg any) any {
 				cfg := pubCfg.(messagingconfig.RedisPublisher)
-				return conn.(*redis.Client).AsWalletwatchTransactionNotifier(cfg.Stream)
+				return conn.(redis.Client).AsWalletwatchTransactionNotifier(cfg.Stream)
 			},
 			typeOf[chainstream.DispatchFailureNotifier](): func(conn, pubCfg any) any {
 				cfg := pubCfg.(messagingconfig.RedisPublisher)
-				return conn.(*redis.Client).AsChainstreamDispatchFailureNotifier(cfg.Stream)
+				return conn.(redis.Client).AsChainstreamDispatchFailureNotifier(cfg.Stream)
 			},
 		},
 	},
@@ -74,11 +74,11 @@ var messagingFactories = map[string]messagingFactory{
 		InterfaceAdapters: map[reflect.Type]func(conn, pubCfg any) any{
 			typeOf[walletwatch.TransactionNotifier](): func(conn, pubCfg any) any {
 				cfg := pubCfg.(messagingconfig.RabbitMQPublisher)
-				return conn.(*rabbitmq.Client).AsWalletwatchTransactionNotifier(cfg.Exchange, cfg.RoutingKey)
+				return conn.(rabbitmq.Client).AsWalletwatchTransactionNotifier(cfg.Exchange, cfg.RoutingKey)
 			},
 			typeOf[chainstream.DispatchFailureNotifier](): func(conn, pubCfg any) any {
 				cfg := pubCfg.(messagingconfig.RabbitMQPublisher)
-				return conn.(*rabbitmq.Client).AsChainstreamDispatchFailureNotifier(cfg.Exchange, cfg.RoutingKey)
+				return conn.(rabbitmq.Client).AsChainstreamDispatchFailureNotifier(cfg.Exchange, cfg.RoutingKey)
 			},
 		},
 	},
