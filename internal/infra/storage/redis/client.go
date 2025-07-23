@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"io"
 
 	redis "github.com/redis/go-redis/v9"
 )
@@ -50,3 +51,6 @@ func New(ctx context.Context, addr, username, password string, db int) (*client,
 		conn: conn,
 	}, nil
 }
+
+// Compile-time assertion to ensure client implements io.Closer.
+var _ io.Closer = new(client)

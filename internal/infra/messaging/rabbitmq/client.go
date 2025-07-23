@@ -3,6 +3,7 @@ package rabbitmq
 import (
 	"context"
 	"errors"
+	"io"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -50,3 +51,6 @@ func New(ctx context.Context, uri string) (*Client, error) {
 		channel: channel,
 	}, nil
 }
+
+// Compile-time assertion to ensure Client implements io.Closer.
+var _ io.Closer = new(Client)
