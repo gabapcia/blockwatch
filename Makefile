@@ -1,14 +1,24 @@
 .PHONY: help
 help:
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
+	@awk 'BEGIN {FS = ":.*?## "} \
+	/^# / {printf "\n\033[1;33m%s\033[0m\n", substr($$0, 3)} \
+	/^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-28s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 # Raw Build
-.PHONY: build
-build: ## Compiles the application and creates a binary in the root directory.
+.PHONY: build-dev
+build-dev: ## Compiles the application in dev mode and creates a binary in the root directory.
 	@CGO_ENABLED=0 go build -o blockwatch cmd/cli/main.go
 
-.PHONY: run
-run: build ## Builds and runs the application.
+.PHONY: build-prod
+build-prod: ## Compiles the application in prod mode and creates a binary in the root directory.
+	@CGO_ENABLED=0 go build -o blockwatch -ldflags "-s -w" cmd/cli/main.go
+
+.PHONY: run-dev
+run-dev: build ## Builds and runs the application in dev mode.
+	@./blockwatch
+
+.PHONY: run-prod
+run-prod: build ## Builds and runs the application in prod mode.
 	@./blockwatch
 
 # Container Build
