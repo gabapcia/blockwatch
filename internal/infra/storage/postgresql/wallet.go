@@ -69,7 +69,7 @@ func (c *client) UnregisterWallet(ctx context.Context, id walletregistry.WalletI
 }
 
 // Compile-time assertion that *client implements walletregistry.WalletStorage.
-var _ walletregistry.WalletStorage = new(client)
+var _ walletregistry.WalletStorage = (*client)(nil)
 
 // FilterWatchedWallets returns the subset of given addresses that are currently
 // being monitored for a specific blockchain network.
@@ -93,4 +93,4 @@ func (c *client) FilterWatchedWallets(ctx context.Context, network string, addre
 }
 
 // Ensure the client implements the walletwatch.WalletStorage interface at compile-time.
-var _ walletwatch.WalletStorage = new(client)
+var _ walletwatch.WalletStorage = (*client)(nil)

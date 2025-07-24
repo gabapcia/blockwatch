@@ -57,4 +57,4 @@ func (c *client) LoadLatestCheckpoint(ctx context.Context, network string) (type
 }
 
 // Ensure that client implements the chainstream.CheckpointStorage interface.
-var _ chainstream.CheckpointStorage = new(client)
+var _ chainstream.CheckpointStorage = (*client)(nil)

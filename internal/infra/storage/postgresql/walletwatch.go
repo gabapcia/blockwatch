@@ -82,4 +82,4 @@ func (c *client) MarkBlockTxWatchComplete(ctx context.Context, network, blockHas
 }
 
 // Compile-time assertion that client implements walletwatch.IdempotencyGuard
-var _ walletwatch.IdempotencyGuard = new(client)
+var _ walletwatch.IdempotencyGuard = (*client)(nil)

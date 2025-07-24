@@ -55,7 +55,7 @@ type service struct {
 }
 
 // Compile-time check to ensure *service implements the Service interface.
-var _ Service = new(service)
+var _ Service = (*service)(nil)
 
 // Start initializes all subscriptions for registered networks,
 // starts retry and dispatch failure handlers, and returns a channel of transformed data.

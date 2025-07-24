@@ -95,4 +95,4 @@ func (logDispatchFailureNotifier) NotifyDispatchFailure(ctx context.Context, fai
 }
 
 // Compile-time assertion to ensure logDispatchFailureNotifier implements DispatchFailureNotifier.
-var _ DispatchFailureNotifier = new(logDispatchFailureNotifier)
+var _ DispatchFailureNotifier = (*logDispatchFailureNotifier)(nil)

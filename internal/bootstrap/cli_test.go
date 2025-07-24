@@ -46,7 +46,7 @@ func TestBootstrap_CLI(t *testing.T) {
 		walletRegistrySvc := new(walletregistrymocks.Service)
 		blockProcSvc := new(blockprocmocks.Service)
 
-		cliRun = func(ctx context.Context, wr walletregistry.Service, bp blockproc.Service) error {
+		cliRun = func(_ context.Context, _ walletregistry.Service, _ blockproc.Service) error {
 			return nil
 		}
 

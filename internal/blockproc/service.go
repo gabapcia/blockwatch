@@ -51,7 +51,7 @@ type service struct {
 }
 
 // Compile-time check to ensure *service implements the Service interface.
-var _ Service = new(service)
+var _ Service = (*service)(nil)
 
 // Start initializes the block processing service.
 //
