@@ -6,18 +6,24 @@ import (
 	"github.com/gabapcia/blockwatch/internal/handlers/cli"
 )
 
-// CLI executes the command-line interface (CLI) entrypoint.
+// cliRun is an indirection over cli.Run used to allow test-time overrides.
 //
-// It delegates the execution to the `cli.Run` handler, passing the initialized
-// wallet registry and block processor services.
+// This enables tests to mock or intercept CLI execution without invoking
+// the actual handler logic.
+var cliRun = cli.Run
+
+// CLI executes the application's command-line interface mode.
 //
-// This method is typically called when the application is run in CLI mode.
+// This method delegates execution to the cli.Run handler, wiring in the
+// necessary runtime dependencies such as walletregistry and blockproc
+// services. It serves as the entrypoint when the application is invoked in
+// standalone CLI mode
 //
 // Parameters:
-//   - ctx: request-scoped context for cancellation and lifecycle control.
+//   - ctx: context for cancellation, timeout, or shutdown signaling.
 //
 // Returns:
-//   - An error if the CLI execution fails.
+//   - An error if CLI execution fails or terminates abnormally.
 func (b *bootstrap) CLI(ctx context.Context) error {
-	return cli.Run(ctx, b.walletregistry, b.blockproc)
+	return cliRun(ctx, b.walletregistry, b.blockproc)
 }
