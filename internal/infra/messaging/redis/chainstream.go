@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/gabapcia/blockwatch/internal/chainstream"
 
@@ -31,27 +32,37 @@ func (c *client) AsChainstreamDispatchFailureNotifier(stream string) chainstream
 
 // makeBlockDispatchFailureMessage converts a BlockDispatchFailure into a flat map[string]any
 // that can be sent as fields in a Redis Stream entry.
-func makeBlockDispatchFailureMessage(dispatchFailure chainstream.BlockDispatchFailure) map[string]any {
+func makeBlockDispatchFailureMessage(dispatchFailure chainstream.BlockDispatchFailure) (map[string]any, error) {
 	errorList := make([]string, len(dispatchFailure.Errors))
 	for i, err := range dispatchFailure.Errors {
 		errorList[i] = err.Error()
 	}
 
+	errorsData, err := json.Marshal(errorList)
+	if err != nil {
+		return nil, err
+	}
+
 	return map[string]any{
 		"network": dispatchFailure.Network,
-		"height":  dispatchFailure.Height,
-		"errors":  errorList,
-	}
+		"height":  dispatchFailure.Height.String(),
+		"errors":  string(errorsData),
+	}, nil
 }
 
 // NotifyDispatchFailure publishes a block dispatch failure event to the configured Redis Stream.
 //
 // This method implements the chainstream.DispatchFailureNotifier interface.
 func (c *chainstreamDispatchFailureNotifier) NotifyDispatchFailure(ctx context.Context, failure chainstream.BlockDispatchFailure) error {
+	values, err := makeBlockDispatchFailureMessage(failure)
+	if err != nil {
+		return err
+	}
+
 	return c.conn.XAdd(ctx, &redis.XAddArgs{
 		Stream: c.stream,
 		ID:     "*",
-		Values: makeBlockDispatchFailureMessage(failure),
+		Values: values,
 	}).Err()
 }
 
