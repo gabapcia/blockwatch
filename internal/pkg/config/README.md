@@ -37,14 +37,14 @@ This package implements a hierarchical configuration system that supports:
 
 ```go
 type Config struct {
-    Log       pkg.Logger    // Logging configuration
-    Telemetry pkg.Telemetry // Service identity and observability
-    Engines   Engines       // Global backend configurations
-    
-    // Use case configurations
-    Walletregistry WalletRegistry
-    Walletwatch    WalletWatch
-    Chainstream    ChainStream
+    ServiceName string     `env:"SERVICE_NAME, default=blockwatch" validate:"required"`
+    Log         pkg.Logger `env:", prefix=LOG_" validate:"required"`
+
+    Engines Engines `env:", prefix=ENGINES_" validate:"omitempty"`
+
+    Walletregistry WalletRegistry `env:", prefix=WALLETREGISTRY_" validate:"required"`
+    Walletwatch    WalletWatch    `env:", prefix=WALLETWATCH_" validate:"required"`
+    Chainstream    ChainStream    `env:", prefix=CHAINSTREAM_" validate:"required"`
 }
 ```
 
@@ -91,11 +91,11 @@ WALLETREGISTRY_WALLET_STORAGE_REDIS_PASSWORD=secret
 ### Core Configuration
 
 ```bash
+# Service
+SERVICE_NAME=blockwatch           # Service identifier
+
 # Logging
 LOG_LEVEL=INFO                    # DEBUG, INFO, WARN, ERROR, PANIC, FATAL
-
-# Telemetry
-TELEMETRY_SERVICE_NAME=blockwatch # Service identifier
 ```
 
 ### Global Engines
@@ -152,8 +152,8 @@ CHAINSTREAM_NETWORKS_ETHEREUM_PROVIDER_TIMEOUT=30s
 
 # Storage and messaging
 CHAINSTREAM_CHECKPOINT_STORAGE_ENGINE=REDIS
-CHAINSTREAM_DISPATCH_FAILURE_HANDLER_ENGINE=REDIS
-CHAINSTREAM_DISPATCH_FAILURE_HANDLER_REDIS_STREAM=failures
+CHAINSTREAM_DISPATCH_FAILURE_NOTIFIER_ENGINE=REDIS
+CHAINSTREAM_DISPATCH_FAILURE_NOTIFIER_REDIS_STREAM=failures
 
 # Retry configuration
 CHAINSTREAM_RETRY_ATTEMPTS=3
@@ -184,7 +184,7 @@ func main() {
     }
     
     // Use configuration
-    fmt.Printf("Service: %s\n", cfg.Telemetry.ServiceName)
+    fmt.Printf("Service: %s\n", cfg.ServiceName)
     fmt.Printf("Log Level: %s\n", cfg.Log.Level)
 }
 ```
