@@ -1,943 +1,477 @@
 package bootstrap
 
 import (
-	"context"
 	"testing"
 	"time"
 
-	"github.com/gabapcia/blockwatch/internal/chainstream"
+	"github.com/gabapcia/blockwatch/internal/bootstrap/messaging"
+	"github.com/gabapcia/blockwatch/internal/bootstrap/storage"
 	"github.com/gabapcia/blockwatch/internal/pkg/config"
 	blockchainconfig "github.com/gabapcia/blockwatch/internal/pkg/config/blockchain"
-	"github.com/gabapcia/blockwatch/internal/pkg/config/messaging"
+	messagingconfig "github.com/gabapcia/blockwatch/internal/pkg/config/messaging"
 	pkgconfig "github.com/gabapcia/blockwatch/internal/pkg/config/pkg"
-	"github.com/gabapcia/blockwatch/internal/pkg/config/storage"
+	storageconfig "github.com/gabapcia/blockwatch/internal/pkg/config/storage"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	rediscontainer "github.com/testcontainers/testcontainers-go/modules/redis"
 )
 
-func TestNew(t *testing.T) {
-	t.Run("returns error when storage initialization fails", func(t *testing.T) {
-		// Arrange
-		cfg := config.Config{
-			ServiceName: "test-blockwatch",
-			Log: pkgconfig.Logger{
-				Level: "info",
-			},
-			Engines: config.Engines{
-				Storage: storage.Engines{
-					// No storage engines configured - will cause storage.Init to fail
-				},
-				Messaging: messaging.Engines{
-					Redis: &messaging.RedisConnection{
-						Address:  "localhost:6379",
-						Username: "",
-						Password: "",
-						DB:       0,
-					},
-				},
-			},
-			Walletregistry: config.WalletRegistry{
-				WalletStorage: storage.Picker{
-					Engine: storage.EngineRedis,
-				},
-			},
-			Walletwatch: config.WalletWatch{
-				MaxProcessingTime: 5 * time.Minute,
-				WalletStorage: storage.Picker{
-					Engine: storage.EngineRedis,
-				},
-				TransactionNotifier: messaging.Picker{
-					Engine: messaging.EngineRedis,
-					MessagePublisher: messaging.MessagePublisher{
-						Redis: &messaging.RedisPublisher{
-							Stream: "wallet-transactions",
-						},
-					},
-				},
-			},
-			Chainstream: config.ChainStream{
-				Networks: blockchainconfig.Networks{},
-			},
-		}
+func setupRedisContainer(t *testing.T) storageconfig.Redis {
+	t.Helper()
 
-		// Act
-		bootstrap, err := New(t.Context(), cfg)
+	ctx := t.Context()
 
-		// Assert
-		assert.Error(t, err)
-		assert.Nil(t, bootstrap)
-		assert.Contains(t, err.Error(), "connection refused")
+	// Start Redis container
+	redisContainer, err := rediscontainer.Run(ctx,
+		"redis:8-alpine",
+		rediscontainer.WithSnapshotting(10, 1),
+		rediscontainer.WithLogLevel(rediscontainer.LogLevelVerbose),
+	)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		redisContainer.Terminate(ctx)
 	})
 
-	t.Run("returns error when messaging initialization fails", func(t *testing.T) {
-		// Arrange
-		cfg := config.Config{
-			ServiceName: "test-blockwatch",
-			Log: pkgconfig.Logger{
-				Level: "info",
-			},
-			Engines: config.Engines{
-				Storage: storage.Engines{
-					Redis: &storage.Redis{
-						Address:  "localhost:6379",
-						Username: "",
-						Password: "",
-						DB:       0,
-					},
-				},
-				Messaging: messaging.Engines{
-					// No messaging engines configured - will cause messaging.Init to fail
-				},
-			},
-			Walletregistry: config.WalletRegistry{
-				WalletStorage: storage.Picker{
-					Engine: storage.EngineRedis,
-				},
-			},
-			Walletwatch: config.WalletWatch{
-				MaxProcessingTime: 5 * time.Minute,
-				WalletStorage: storage.Picker{
-					Engine: storage.EngineRedis,
-				},
-				TransactionNotifier: messaging.Picker{
-					Engine: messaging.EngineRedis,
-					MessagePublisher: messaging.MessagePublisher{
-						Redis: &messaging.RedisPublisher{
-							Stream: "wallet-transactions",
-						},
-					},
-				},
-			},
-			Chainstream: config.ChainStream{
-				Networks: blockchainconfig.Networks{},
-			},
-		}
-
-		// Act
-		bootstrap, err := New(t.Context(), cfg)
-
-		// Assert
-		assert.Error(t, err)
-		assert.Nil(t, bootstrap)
-		assert.Contains(t, err.Error(), "connection refused")
-	})
-
-	t.Run("returns error when chainstream setup fails", func(t *testing.T) {
-		// Arrange
-		cfg := config.Config{
-			ServiceName: "test-blockwatch",
-			Log: pkgconfig.Logger{
-				Level: "info",
-			},
-			Engines: config.Engines{
-				Storage: storage.Engines{
-					Redis: &storage.Redis{
-						Address:  "localhost:6379",
-						Username: "",
-						Password: "",
-						DB:       0,
-					},
-				},
-				Messaging: messaging.Engines{
-					Redis: &messaging.RedisConnection{
-						Address:  "localhost:6379",
-						Username: "",
-						Password: "",
-						DB:       0,
-					},
-				},
-			},
-			Walletregistry: config.WalletRegistry{
-				WalletStorage: storage.Picker{
-					Engine: storage.EngineRedis,
-				},
-			},
-			Walletwatch: config.WalletWatch{
-				MaxProcessingTime: 5 * time.Minute,
-				WalletStorage: storage.Picker{
-					Engine: storage.EngineRedis,
-				},
-				TransactionNotifier: messaging.Picker{
-					Engine: messaging.EngineRedis,
-					MessagePublisher: messaging.MessagePublisher{
-						Redis: &messaging.RedisPublisher{
-							Stream: "wallet-transactions",
-						},
-					},
-				},
-			},
-			Chainstream: config.ChainStream{
-				Networks: blockchainconfig.Networks{},
-				CheckpointStorage: &storage.Picker{
-					Engine: storage.EnginePostgreSQL, // PostgreSQL not configured
-				},
-			},
-		}
-
-		// Act
-		bootstrap, err := New(t.Context(), cfg)
-
-		// Assert
-		assert.Error(t, err)
-		assert.Nil(t, bootstrap)
-		assert.Contains(t, err.Error(), "connection refused")
-	})
-
-	t.Run("returns error when walletwatch setup fails", func(t *testing.T) {
-		// Arrange
-		cfg := config.Config{
-			ServiceName: "test-blockwatch",
-			Log: pkgconfig.Logger{
-				Level: "info",
-			},
-			Engines: config.Engines{
-				Storage: storage.Engines{
-					Redis: &storage.Redis{
-						Address:  "localhost:6379",
-						Username: "",
-						Password: "",
-						DB:       0,
-					},
-				},
-				Messaging: messaging.Engines{
-					Redis: &messaging.RedisConnection{
-						Address:  "localhost:6379",
-						Username: "",
-						Password: "",
-						DB:       0,
-					},
-				},
-			},
-			Walletregistry: config.WalletRegistry{
-				WalletStorage: storage.Picker{
-					Engine: storage.EngineRedis,
-				},
-			},
-			Walletwatch: config.WalletWatch{
-				MaxProcessingTime: 5 * time.Minute,
-				WalletStorage: storage.Picker{
-					Engine: "INVALID_ENGINE", // Invalid engine
-				},
-				TransactionNotifier: messaging.Picker{
-					Engine: messaging.EngineRedis,
-					MessagePublisher: messaging.MessagePublisher{
-						Redis: &messaging.RedisPublisher{
-							Stream: "wallet-transactions",
-						},
-					},
-				},
-			},
-			Chainstream: config.ChainStream{
-				Networks: blockchainconfig.Networks{},
-			},
-		}
-
-		// Act
-		bootstrap, err := New(t.Context(), cfg)
-
-		// Assert
-		assert.Error(t, err)
-		assert.Nil(t, bootstrap)
-		assert.Contains(t, err.Error(), "connection refused")
-	})
-
-	t.Run("returns error when walletregistry setup fails", func(t *testing.T) {
-		// Arrange
-		cfg := config.Config{
-			ServiceName: "test-blockwatch",
-			Log: pkgconfig.Logger{
-				Level: "info",
-			},
-			Engines: config.Engines{
-				Storage: storage.Engines{
-					Redis: &storage.Redis{
-						Address:  "localhost:6379",
-						Username: "",
-						Password: "",
-						DB:       0,
-					},
-				},
-				Messaging: messaging.Engines{
-					Redis: &messaging.RedisConnection{
-						Address:  "localhost:6379",
-						Username: "",
-						Password: "",
-						DB:       0,
-					},
-				},
-			},
-			Walletregistry: config.WalletRegistry{
-				WalletStorage: storage.Picker{
-					Engine: "INVALID_ENGINE", // Invalid engine
-				},
-			},
-			Walletwatch: config.WalletWatch{
-				MaxProcessingTime: 5 * time.Minute,
-				WalletStorage: storage.Picker{
-					Engine: storage.EngineRedis,
-				},
-				TransactionNotifier: messaging.Picker{
-					Engine: messaging.EngineRedis,
-					MessagePublisher: messaging.MessagePublisher{
-						Redis: &messaging.RedisPublisher{
-							Stream: "wallet-transactions",
-						},
-					},
-				},
-			},
-			Chainstream: config.ChainStream{
-				Networks: blockchainconfig.Networks{},
-			},
-		}
-
-		// Act
-		bootstrap, err := New(t.Context(), cfg)
-
-		// Assert
-		assert.Error(t, err)
-		assert.Nil(t, bootstrap)
-		assert.Contains(t, err.Error(), "connection refused")
-	})
-
-	t.Run("returns error when context is cancelled", func(t *testing.T) {
-		// Arrange
-		ctx, cancel := context.WithCancel(t.Context())
-		cancel() // Cancel immediately
-
-		cfg := config.Config{
-			ServiceName: "test-blockwatch",
-			Log: pkgconfig.Logger{
-				Level: "info",
-			},
-			Engines: config.Engines{
-				Storage: storage.Engines{
-					Redis: &storage.Redis{
-						Address:  "localhost:6379",
-						Username: "",
-						Password: "",
-						DB:       0,
-					},
-				},
-				Messaging: messaging.Engines{
-					Redis: &messaging.RedisConnection{
-						Address:  "localhost:6379",
-						Username: "",
-						Password: "",
-						DB:       0,
-					},
-				},
-			},
-			Walletregistry: config.WalletRegistry{
-				WalletStorage: storage.Picker{
-					Engine: storage.EngineRedis,
-				},
-			},
-			Walletwatch: config.WalletWatch{
-				MaxProcessingTime: 5 * time.Minute,
-				WalletStorage: storage.Picker{
-					Engine: storage.EngineRedis,
-				},
-				TransactionNotifier: messaging.Picker{
-					Engine: messaging.EngineRedis,
-					MessagePublisher: messaging.MessagePublisher{
-						Redis: &messaging.RedisPublisher{
-							Stream: "wallet-transactions",
-						},
-					},
-				},
-			},
-			Chainstream: config.ChainStream{
-				Networks: blockchainconfig.Networks{},
-			},
-		}
-
-		// Act
-		bootstrap, err := New(ctx, cfg)
-
-		// Assert
-		assert.Error(t, err)
-		assert.Nil(t, bootstrap)
-		assert.Contains(t, err.Error(), "context canceled")
-	})
-}
-
-func TestBootstrap_Close(t *testing.T) {
-	t.Run("close calls storage and messaging close functions", func(t *testing.T) {
-		b := &bootstrap{}
-
-		// Execute
-		err := b.Close()
-		assert.NoError(t, err)
-	})
-}
-
-func TestSetupWalletWatch(t *testing.T) {
-	t.Run("returns error when redis storage engine is not configured", func(t *testing.T) {
-		// Arrange
-		cfg := config.WalletWatch{
-			WalletStorage: storage.Picker{
-				Engine: storage.EngineRedis,
-			},
-			TransactionNotifier: messaging.Picker{
-				Engine: messaging.EngineRedis,
-				MessagePublisher: messaging.MessagePublisher{
-					Redis: &messaging.RedisPublisher{
-						Stream: "wallet-transactions",
-					},
-				},
-			},
-		}
-
-		// Act
-		service, err := setupWalletWatch(t.Context(), cfg)
-
-		// Assert
-		assert.Error(t, err)
-		assert.Nil(t, service)
-		assert.Contains(t, err.Error(), "no default instance found")
-	})
-
-	t.Run("returns error when redis storage engine is not configured with max processing time", func(t *testing.T) {
-		// Arrange
-		cfg := config.WalletWatch{
-			MaxProcessingTime: 10 * time.Minute,
-			WalletStorage: storage.Picker{
-				Engine: storage.EngineRedis,
-			},
-			TransactionNotifier: messaging.Picker{
-				Engine: messaging.EngineRedis,
-				MessagePublisher: messaging.MessagePublisher{
-					Redis: &messaging.RedisPublisher{
-						Stream: "wallet-transactions",
-					},
-				},
-			},
-		}
-
-		// Act
-		service, err := setupWalletWatch(t.Context(), cfg)
-
-		// Assert
-		assert.Error(t, err)
-		assert.Nil(t, service)
-		assert.Contains(t, err.Error(), "no default instance found")
-	})
-
-	t.Run("returns error when postgresql idempotency guard is not configured", func(t *testing.T) {
-		// Arrange
-		idempotencyGuardPicker := &storage.Picker{
-			Engine: storage.EnginePostgreSQL,
-		}
-		cfg := config.WalletWatch{
-			WalletStorage: storage.Picker{
-				Engine: storage.EngineRedis,
-			},
-			TransactionNotifier: messaging.Picker{
-				Engine: messaging.EngineRedis,
-				MessagePublisher: messaging.MessagePublisher{
-					Redis: &messaging.RedisPublisher{
-						Stream: "wallet-transactions",
-					},
-				},
-			},
-			IdempotencyGuard: idempotencyGuardPicker,
-		}
-
-		// Act
-		service, err := setupWalletWatch(t.Context(), cfg)
-
-		// Assert
-		assert.Error(t, err)
-		assert.Nil(t, service)
-		assert.Contains(t, err.Error(), "no default instance found")
-	})
-
-	t.Run("returns error when rabbitmq messaging engine is not configured", func(t *testing.T) {
-		// Arrange
-		idempotencyGuardPicker := &storage.Picker{
-			Engine: storage.EnginePostgreSQL,
-		}
-		cfg := config.WalletWatch{
-			MaxProcessingTime: 15 * time.Minute,
-			WalletStorage: storage.Picker{
-				Engine: storage.EngineRedis,
-			},
-			TransactionNotifier: messaging.Picker{
-				Engine: messaging.EngineRabbitMQ,
-				MessagePublisher: messaging.MessagePublisher{
-					RabbitMQ: &messaging.RabbitMQPublisher{
-						Exchange:   "wallet-exchange",
-						RoutingKey: "wallet.transaction",
-					},
-				},
-			},
-			IdempotencyGuard: idempotencyGuardPicker,
-		}
-
-		// Act
-		service, err := setupWalletWatch(t.Context(), cfg)
-
-		// Assert
-		assert.Error(t, err)
-		assert.Nil(t, service)
-		assert.Contains(t, err.Error(), "no default instance found")
-	})
-
-	t.Run("returns error when wallet storage resolution fails", func(t *testing.T) {
-		// Arrange
-		cfg := config.WalletWatch{
-			WalletStorage: storage.Picker{
-				Engine: "INVALID_ENGINE",
-			},
-			TransactionNotifier: messaging.Picker{
-				Engine: messaging.EngineRedis,
-				MessagePublisher: messaging.MessagePublisher{
-					Redis: &messaging.RedisPublisher{
-						Stream: "wallet-transactions",
-					},
-				},
-			},
-		}
-
-		// Act
-		service, err := setupWalletWatch(t.Context(), cfg)
-
-		// Assert
-		assert.Error(t, err)
-		assert.Nil(t, service)
-		assert.Contains(t, err.Error(), "INVALID_ENGINE")
-	})
-
-	t.Run("returns error when transaction notifier resolution fails", func(t *testing.T) {
-		// Arrange
-		cfg := config.WalletWatch{
-			WalletStorage: storage.Picker{
-				Engine: storage.EngineRedis,
-			},
-			TransactionNotifier: messaging.Picker{
-				Engine: "INVALID_ENGINE",
-				MessagePublisher: messaging.MessagePublisher{
-					Redis: &messaging.RedisPublisher{
-						Stream: "wallet-transactions",
-					},
-				},
-			},
-		}
-
-		// Act
-		service, err := setupWalletWatch(t.Context(), cfg)
-
-		// Assert
-		assert.Error(t, err)
-		assert.Nil(t, service)
-		// Storage resolution fails first since it's checked before transaction notifier
-		assert.Contains(t, err.Error(), "no default instance found")
-	})
-
-	t.Run("returns error when idempotency guard resolution fails", func(t *testing.T) {
-		// Arrange
-		idempotencyGuardPicker := &storage.Picker{
-			Engine: "INVALID_ENGINE",
-		}
-		cfg := config.WalletWatch{
-			WalletStorage: storage.Picker{
-				Engine: storage.EngineRedis,
-			},
-			TransactionNotifier: messaging.Picker{
-				Engine: messaging.EngineRedis,
-				MessagePublisher: messaging.MessagePublisher{
-					Redis: &messaging.RedisPublisher{
-						Stream: "wallet-transactions",
-					},
-				},
-			},
-			IdempotencyGuard: idempotencyGuardPicker,
-		}
-
-		// Act
-		service, err := setupWalletWatch(t.Context(), cfg)
-
-		// Assert
-		assert.Error(t, err)
-		assert.Nil(t, service)
-		// Storage resolution fails first since it's checked before idempotency guard
-		assert.Contains(t, err.Error(), "no default instance found")
-	})
-
-	t.Run("returns error when context is cancelled", func(t *testing.T) {
-		// Arrange
-		ctx, cancel := context.WithCancel(t.Context())
-		cancel() // Cancel immediately
-
-		cfg := config.WalletWatch{
-			WalletStorage: storage.Picker{
-				Engine: storage.EngineRedis,
-			},
-			TransactionNotifier: messaging.Picker{
-				Engine: messaging.EngineRedis,
-				MessagePublisher: messaging.MessagePublisher{
-					Redis: &messaging.RedisPublisher{
-						Stream: "wallet-transactions",
-					},
-				},
-			},
-		}
-
-		// Act
-		service, err := setupWalletWatch(ctx, cfg)
-
-		// Assert
-		assert.Error(t, err)
-		assert.Nil(t, service)
-		assert.Contains(t, err.Error(), "no default instance found")
-	})
-
-	t.Run("returns error with zero max processing time when storage not configured", func(t *testing.T) {
-		// Arrange
-		cfg := config.WalletWatch{
-			MaxProcessingTime: 0, // Should not add the option when zero
-			WalletStorage: storage.Picker{
-				Engine: storage.EngineRedis,
-			},
-			TransactionNotifier: messaging.Picker{
-				Engine: messaging.EngineRedis,
-				MessagePublisher: messaging.MessagePublisher{
-					Redis: &messaging.RedisPublisher{
-						Stream: "wallet-transactions",
-					},
-				},
-			},
-		}
-
-		// Act
-		service, err := setupWalletWatch(t.Context(), cfg)
-
-		// Assert
-		assert.Error(t, err)
-		assert.Nil(t, service)
-		assert.Contains(t, err.Error(), "no default instance found")
-	})
-}
-
-func TestSetupWalletRegistry(t *testing.T) {
-	t.Run("returns error when redis storage engine is not configured", func(t *testing.T) {
-		// Arrange
-		cfg := config.WalletRegistry{
-			WalletStorage: storage.Picker{
-				Engine: storage.EngineRedis,
-			},
-		}
-
-		// Act
-		service, err := setupWalletRegistry(t.Context(), cfg)
-
-		// Assert
-		assert.Error(t, err)
-		assert.Nil(t, service)
-		assert.Contains(t, err.Error(), "no default instance found")
-	})
-
-	t.Run("returns error when postgresql storage engine is not configured", func(t *testing.T) {
-		// Arrange
-		cfg := config.WalletRegistry{
-			WalletStorage: storage.Picker{
-				Engine: storage.EnginePostgreSQL,
-			},
-		}
-
-		// Act
-		service, err := setupWalletRegistry(t.Context(), cfg)
-
-		// Assert
-		assert.Error(t, err)
-		assert.Nil(t, service)
-		assert.Contains(t, err.Error(), "no default instance found")
-	})
-
-	t.Run("returns error when inline redis config cannot connect", func(t *testing.T) {
-		// Arrange
-		cfg := config.WalletRegistry{
-			WalletStorage: storage.Picker{
-				InlineConfig: storage.InlineConfig{
-					Redis: &storage.Redis{
-						Address:  "localhost:6379",
-						Username: "",
-						Password: "",
-						DB:       0,
-					},
-				},
-			},
-		}
-
-		// Act
-		service, err := setupWalletRegistry(t.Context(), cfg)
-
-		// Assert
-		assert.Error(t, err)
-		assert.Nil(t, service)
-		assert.Contains(t, err.Error(), "connection refused")
-	})
-
-	t.Run("returns error when wallet storage resolution fails with invalid engine", func(t *testing.T) {
-		// Arrange
-		cfg := config.WalletRegistry{
-			WalletStorage: storage.Picker{
-				Engine: "INVALID_ENGINE",
-			},
-		}
-
-		// Act
-		service, err := setupWalletRegistry(t.Context(), cfg)
-
-		// Assert
-		assert.Error(t, err)
-		assert.Nil(t, service)
-		assert.Contains(t, err.Error(), "INVALID_ENGINE")
-	})
-
-	t.Run("returns error when context is cancelled", func(t *testing.T) {
-		// Arrange
-		ctx, cancel := context.WithCancel(t.Context())
-		cancel() // Cancel immediately
-
-		cfg := config.WalletRegistry{
-			WalletStorage: storage.Picker{
-				Engine: storage.EngineRedis,
-			},
-		}
-
-		// Act
-		service, err := setupWalletRegistry(ctx, cfg)
-
-		// Assert
-		assert.Error(t, err)
-		assert.Nil(t, service)
-		assert.Contains(t, err.Error(), "no default instance found")
-	})
-}
-
-func TestBuildJsonrpcClient(t *testing.T) {
-	t.Run("creates jsonrpc client with default configuration", func(t *testing.T) {
-		// Arrange
-		cfg := pkgconfig.JsonRPC{
-			HttpClient: pkgconfig.HttpClient{
-				Timeout:      5 * time.Second,
-				RetryWaitMin: 1 * time.Second,
-				RetryWaitMax: 5 * time.Second,
-				RetryMax:     2,
-			},
-			ProviderEndpoint: "https://mainnet.infura.io/v3/test-key",
-		}
-
-		// Act
-		client := buildJsonrpcClient(cfg)
-
-		// Assert
-		assert.NotNil(t, client)
-	})
-
-	t.Run("creates jsonrpc client with custom configuration", func(t *testing.T) {
-		// Arrange
-		cfg := pkgconfig.JsonRPC{
-			HttpClient: pkgconfig.HttpClient{
-				Timeout:      30 * time.Second,
-				RetryWaitMin: 2 * time.Second,
-				RetryWaitMax: 10 * time.Second,
-				RetryMax:     5,
-			},
-			ProviderEndpoint: "https://eth-mainnet.alchemyapi.io/v2/custom-key",
-		}
-
-		// Act
-		client := buildJsonrpcClient(cfg)
-
-		// Assert
-		assert.NotNil(t, client)
-	})
-
-	t.Run("creates jsonrpc client with minimal retry configuration", func(t *testing.T) {
-		// Arrange
-		cfg := pkgconfig.JsonRPC{
-			HttpClient: pkgconfig.HttpClient{
-				Timeout:      1 * time.Second,
-				RetryWaitMin: 100 * time.Millisecond,
-				RetryWaitMax: 1 * time.Second,
-				RetryMax:     0, // No retries
-			},
-			ProviderEndpoint: "https://localhost:8545",
-		}
-
-		// Act
-		client := buildJsonrpcClient(cfg)
-
-		// Assert
-		assert.NotNil(t, client)
-	})
+	// Get connection details
+	connectionString, err := redisContainer.ConnectionString(ctx)
+	require.NoError(t, err)
+
+	// Parse connection string to get host and port
+	opts, err := redis.ParseURL(connectionString)
+	require.NoError(t, err)
+
+	return storageconfig.Redis{
+		Address:  opts.Addr,
+		Username: opts.Username,
+		Password: opts.Password,
+		DB:       opts.DB,
+	}
 }
 
 func TestSetupChainStream(t *testing.T) {
-	t.Run("successfully creates chainstream service with minimal config", func(t *testing.T) {
-		// Arrange
-		cfg := config.ChainStream{
-			Networks: blockchainconfig.Networks{},
-		}
+	t.Run("with all options", func(t *testing.T) {
+		redisContainerCfg := setupRedisContainer(t)
 
-		// Act
-		service, err := setupChainStream(t.Context(), cfg)
-
-		// Assert
-		require.NoError(t, err)
-		assert.NotNil(t, service)
-		assert.Implements(t, (*chainstream.Service)(nil), service)
-	})
-
-	t.Run("successfully creates chainstream service with ethereum network", func(t *testing.T) {
-		// Arrange
 		cfg := config.ChainStream{
 			Networks: blockchainconfig.Networks{
 				Ethereum: &pkgconfig.JsonRPC{
-					HttpClient: pkgconfig.HttpClient{
-						Timeout:      5 * time.Second,
-						RetryWaitMin: 1 * time.Second,
-						RetryWaitMax: 5 * time.Second,
-						RetryMax:     2,
-					},
-					ProviderEndpoint: "https://mainnet.infura.io/v3/test",
-				},
-			},
-		}
-
-		// Act
-		service, err := setupChainStream(t.Context(), cfg)
-
-		// Assert
-		require.NoError(t, err)
-		assert.NotNil(t, service)
-		assert.Implements(t, (*chainstream.Service)(nil), service)
-	})
-
-	t.Run("successfully creates chainstream service with retry configuration", func(t *testing.T) {
-		// Arrange
-		cfg := config.ChainStream{
-			Networks: blockchainconfig.Networks{},
-			Retry: &pkgconfig.Retry{
-				Attempts: 3,
-				Delay:    1 * time.Second,
-				MaxDelay: 5 * time.Second,
-			},
-		}
-
-		// Act
-		service, err := setupChainStream(t.Context(), cfg)
-
-		// Assert
-		require.NoError(t, err)
-		assert.NotNil(t, service)
-		assert.Implements(t, (*chainstream.Service)(nil), service)
-	})
-
-	t.Run("returns error when redis checkpoint storage is not configured", func(t *testing.T) {
-		// Arrange
-		checkpointStoragePicker := &storage.Picker{
-			Engine: storage.EngineRedis,
-		}
-		cfg := config.ChainStream{
-			Networks:          blockchainconfig.Networks{},
-			CheckpointStorage: checkpointStoragePicker,
-		}
-
-		// Act
-		service, err := setupChainStream(t.Context(), cfg)
-
-		// Assert
-		assert.Error(t, err)
-		assert.Nil(t, service)
-		assert.Contains(t, err.Error(), "no default instance found")
-	})
-
-	t.Run("returns error when redis dispatch failure notifier is not configured", func(t *testing.T) {
-		// Arrange
-		dispatchFailureNotifierPicker := &messaging.Picker{
-			Engine: messaging.EngineRedis,
-			MessagePublisher: messaging.MessagePublisher{
-				Redis: &messaging.RedisPublisher{
-					Stream: "test-stream",
-				},
-			},
-		}
-		cfg := config.ChainStream{
-			Networks:                blockchainconfig.Networks{},
-			DispatchFailureNotifier: dispatchFailureNotifierPicker,
-		}
-
-		// Act
-		service, err := setupChainStream(t.Context(), cfg)
-
-		// Assert
-		assert.Error(t, err)
-		assert.Nil(t, service)
-		assert.Contains(t, err.Error(), "no default messaging instance found")
-	})
-
-	t.Run("returns error when redis storage and messaging are not configured", func(t *testing.T) {
-		// Arrange
-		checkpointStoragePicker := &storage.Picker{
-			Engine: storage.EngineRedis,
-		}
-		dispatchFailureNotifierPicker := &messaging.Picker{
-			Engine: messaging.EngineRedis,
-			MessagePublisher: messaging.MessagePublisher{
-				Redis: &messaging.RedisPublisher{
-					Stream: "test-stream",
-				},
-			},
-		}
-		cfg := config.ChainStream{
-			Networks: blockchainconfig.Networks{
-				Ethereum: &pkgconfig.JsonRPC{
-					HttpClient: pkgconfig.HttpClient{
-						Timeout:      10 * time.Second,
-						RetryWaitMin: 500 * time.Millisecond,
-						RetryWaitMax: 10 * time.Second,
-						RetryMax:     5,
-					},
-					ProviderEndpoint: "https://eth-mainnet.alchemyapi.io/v2/test",
+					ProviderEndpoint: "http://localhost:8545",
 				},
 			},
 			Retry: &pkgconfig.Retry{
 				Attempts: 5,
-				Delay:    2 * time.Second,
+				Delay:    1 * time.Second,
 				MaxDelay: 10 * time.Second,
 			},
-			CheckpointStorage:       checkpointStoragePicker,
-			DispatchFailureNotifier: dispatchFailureNotifierPicker,
+			CheckpointStorage: &storageconfig.Picker{
+				Engine: storageconfig.EngineRedis,
+			},
+			DispatchFailureNotifier: &messagingconfig.Picker{
+				Engine: messagingconfig.EngineRedis,
+				MessagePublisher: messagingconfig.MessagePublisher{
+					Redis: &messagingconfig.RedisPublisher{
+						Stream: "test-stream",
+					},
+				},
+			},
 		}
 
-		// Act
-		service, err := setupChainStream(t.Context(), cfg)
-
-		// Assert
-		assert.Error(t, err)
-		assert.Nil(t, service)
-		assert.Contains(t, err.Error(), "no default instance found")
-	})
-
-	t.Run("successfully creates chainstream service with cancelled context", func(t *testing.T) {
-		// Arrange
-		ctx, cancel := context.WithCancel(t.Context())
-		cancel() // Cancel immediately
-
-		cfg := config.ChainStream{
-			Networks: blockchainconfig.Networks{},
-		}
-
-		// Act
-		service, err := setupChainStream(ctx, cfg)
-
-		// Assert
+		err := storage.Init(t.Context(), storageconfig.Engines{
+			Redis: &redisContainerCfg,
+		})
 		require.NoError(t, err)
-		assert.NotNil(t, service)
-		assert.Implements(t, (*chainstream.Service)(nil), service)
+		defer storage.Close()
+
+		err = messaging.Init(t.Context(), messagingconfig.Engines{
+			Redis: &messagingconfig.RedisConnection{
+				Address: redisContainerCfg.Address,
+			},
+		})
+		require.NoError(t, err)
+		defer messaging.Close()
+
+		_, err = setupChainStream(t.Context(), cfg)
+		assert.NoError(t, err)
 	})
+
+	t.Run("with storage resolver error", func(t *testing.T) {
+		cfg := config.ChainStream{
+			CheckpointStorage: &storageconfig.Picker{
+				Engine: "invalid",
+			},
+		}
+
+		_, err := setupChainStream(t.Context(), cfg)
+		assert.Error(t, err)
+	})
+
+	t.Run("with messaging resolver error", func(t *testing.T) {
+		cfg := config.ChainStream{
+			DispatchFailureNotifier: &messagingconfig.Picker{
+				Engine: "invalid",
+			},
+		}
+
+		_, err := setupChainStream(t.Context(), cfg)
+		assert.Error(t, err)
+	})
+}
+
+func TestSetupWalletWatch(t *testing.T) {
+	t.Run("with all options", func(t *testing.T) {
+		redisContainerCfg := setupRedisContainer(t)
+
+		cfg := config.WalletWatch{
+			WalletStorage: storageconfig.Picker{
+				Engine: storageconfig.EngineRedis,
+			},
+			TransactionNotifier: messagingconfig.Picker{
+				Engine: messagingconfig.EngineRedis,
+				MessagePublisher: messagingconfig.MessagePublisher{
+					Redis: &messagingconfig.RedisPublisher{
+						Stream: "test-stream",
+					},
+				},
+			},
+			MaxProcessingTime: 5 * time.Second,
+			IdempotencyGuard: &storageconfig.Picker{
+				Engine: storageconfig.EngineRedis,
+			},
+		}
+
+		err := storage.Init(t.Context(), storageconfig.Engines{
+			Redis: &redisContainerCfg,
+		})
+		require.NoError(t, err)
+		defer storage.Close()
+
+		err = messaging.Init(t.Context(), messagingconfig.Engines{
+			Redis: &messagingconfig.RedisConnection{
+				Address: redisContainerCfg.Address,
+			},
+		})
+		require.NoError(t, err)
+		defer messaging.Close()
+
+		_, err = setupWalletWatch(t.Context(), cfg)
+		assert.NoError(t, err)
+	})
+
+	t.Run("with wallet storage resolver error", func(t *testing.T) {
+		cfg := config.WalletWatch{
+			WalletStorage: storageconfig.Picker{
+				Engine: "invalid",
+			},
+		}
+
+		_, err := setupWalletWatch(t.Context(), cfg)
+		assert.Error(t, err)
+	})
+
+	t.Run("with transaction notifier resolver error", func(t *testing.T) {
+		cfg := config.WalletWatch{
+			WalletStorage: storageconfig.Picker{
+				Engine: storageconfig.EngineRedis,
+			},
+			TransactionNotifier: messagingconfig.Picker{
+				Engine: "invalid",
+			},
+		}
+
+		redisContainerCfg := setupRedisContainer(t)
+		err := storage.Init(t.Context(), storageconfig.Engines{
+			Redis: &redisContainerCfg,
+		})
+		require.NoError(t, err)
+		defer storage.Close()
+
+		_, err = setupWalletWatch(t.Context(), cfg)
+		assert.Error(t, err)
+	})
+
+	t.Run("with idempotency guard resolver error", func(t *testing.T) {
+		cfg := config.WalletWatch{
+			WalletStorage: storageconfig.Picker{
+				Engine: storageconfig.EngineRedis,
+			},
+			TransactionNotifier: messagingconfig.Picker{
+				Engine: messagingconfig.EngineRedis,
+				MessagePublisher: messagingconfig.MessagePublisher{
+					Redis: &messagingconfig.RedisPublisher{
+						Stream: "test-stream",
+					},
+				},
+			},
+			IdempotencyGuard: &storageconfig.Picker{
+				Engine: "invalid",
+			},
+		}
+
+		redisContainerCfg := setupRedisContainer(t)
+		err := storage.Init(t.Context(), storageconfig.Engines{
+			Redis: &redisContainerCfg,
+		})
+		require.NoError(t, err)
+		defer storage.Close()
+
+		err = messaging.Init(t.Context(), messagingconfig.Engines{
+			Redis: &messagingconfig.RedisConnection{
+				Address: redisContainerCfg.Address,
+			},
+		})
+		require.NoError(t, err)
+		defer messaging.Close()
+
+		_, err = setupWalletWatch(t.Context(), cfg)
+		assert.Error(t, err)
+	})
+}
+
+func TestSetupWalletRegistry(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		redisContainerCfg := setupRedisContainer(t)
+
+		cfg := config.WalletRegistry{
+			WalletStorage: storageconfig.Picker{
+				Engine: storageconfig.EngineRedis,
+			},
+		}
+
+		err := storage.Init(t.Context(), storageconfig.Engines{
+			Redis: &redisContainerCfg,
+		})
+		require.NoError(t, err)
+		defer storage.Close()
+
+		_, err = setupWalletRegistry(t.Context(), cfg)
+		assert.NoError(t, err)
+	})
+
+	t.Run("with resolver error", func(t *testing.T) {
+		cfg := config.WalletRegistry{
+			WalletStorage: storageconfig.Picker{
+				Engine: "invalid",
+			},
+		}
+
+		_, err := setupWalletRegistry(t.Context(), cfg)
+		assert.Error(t, err)
+	})
+}
+
+func TestNew(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		redisContainerCfg := setupRedisContainer(t)
+		cfg := config.Config{
+			Engines: config.Engines{
+				Storage: storageconfig.Engines{
+					Redis: &redisContainerCfg,
+				},
+				Messaging: messagingconfig.Engines{
+					Redis: &messagingconfig.RedisConnection{
+						Address: redisContainerCfg.Address,
+					},
+				},
+			},
+			Chainstream: config.ChainStream{
+				CheckpointStorage: &storageconfig.Picker{
+					Engine: storageconfig.EngineRedis,
+				},
+			},
+			Walletwatch: config.WalletWatch{
+				WalletStorage: storageconfig.Picker{
+					Engine: storageconfig.EngineRedis,
+				},
+				TransactionNotifier: messagingconfig.Picker{
+					Engine: messagingconfig.EngineRedis,
+					MessagePublisher: messagingconfig.MessagePublisher{
+						Redis: &messagingconfig.RedisPublisher{
+							Stream: "test-stream",
+						},
+					},
+				},
+			},
+			Walletregistry: config.WalletRegistry{
+				WalletStorage: storageconfig.Picker{
+					Engine: storageconfig.EngineRedis,
+				},
+			},
+		}
+
+		_, err := New(t.Context(), cfg)
+		assert.NoError(t, err)
+	})
+
+	t.Run("with storage init error", func(t *testing.T) {
+		cfg := config.Config{
+			Engines: config.Engines{
+				Storage: storageconfig.Engines{
+					Redis: &storageconfig.Redis{},
+				},
+			},
+		}
+
+		_, err := New(t.Context(), cfg)
+		assert.Error(t, err)
+	})
+
+	t.Run("with messaging init error", func(t *testing.T) {
+		redisContainerCfg := setupRedisContainer(t)
+		cfg := config.Config{
+			Engines: config.Engines{
+				Storage: storageconfig.Engines{
+					Redis: &redisContainerCfg,
+				},
+				Messaging: messagingconfig.Engines{
+					Redis: &messagingconfig.RedisConnection{},
+				},
+			},
+		}
+
+		_, err := New(t.Context(), cfg)
+		assert.Error(t, err)
+	})
+
+	t.Run("with setupChainStream error", func(t *testing.T) {
+		redisContainerCfg := setupRedisContainer(t)
+		cfg := config.Config{
+			Engines: config.Engines{
+				Storage: storageconfig.Engines{
+					Redis: &redisContainerCfg,
+				},
+				Messaging: messagingconfig.Engines{
+					Redis: &messagingconfig.RedisConnection{
+						Address: redisContainerCfg.Address,
+					},
+				},
+			},
+			Chainstream: config.ChainStream{
+				CheckpointStorage: &storageconfig.Picker{
+					Engine: "invalid",
+				},
+			},
+		}
+
+		_, err := New(t.Context(), cfg)
+		assert.Error(t, err)
+	})
+
+	t.Run("with setupWalletWatch error", func(t *testing.T) {
+		redisContainerCfg := setupRedisContainer(t)
+		cfg := config.Config{
+			Engines: config.Engines{
+				Storage: storageconfig.Engines{
+					Redis: &redisContainerCfg,
+				},
+				Messaging: messagingconfig.Engines{
+					Redis: &messagingconfig.RedisConnection{
+						Address: redisContainerCfg.Address,
+					},
+				},
+			},
+			Chainstream: config.ChainStream{
+				CheckpointStorage: &storageconfig.Picker{
+					Engine: storageconfig.EngineRedis,
+				},
+			},
+			Walletwatch: config.WalletWatch{
+				WalletStorage: storageconfig.Picker{
+					Engine: "invalid",
+				},
+			},
+		}
+
+		_, err := New(t.Context(), cfg)
+		assert.Error(t, err)
+	})
+
+	t.Run("with setupWalletRegistry error", func(t *testing.T) {
+		redisContainerCfg := setupRedisContainer(t)
+		cfg := config.Config{
+			Engines: config.Engines{
+				Storage: storageconfig.Engines{
+					Redis: &redisContainerCfg,
+				},
+				Messaging: messagingconfig.Engines{
+					Redis: &messagingconfig.RedisConnection{
+						Address: redisContainerCfg.Address,
+					},
+				},
+			},
+			Chainstream: config.ChainStream{
+				CheckpointStorage: &storageconfig.Picker{
+					Engine: storageconfig.EngineRedis,
+				},
+			},
+			Walletwatch: config.WalletWatch{
+				WalletStorage: storageconfig.Picker{
+					Engine: storageconfig.EngineRedis,
+				},
+				TransactionNotifier: messagingconfig.Picker{
+					Engine: messagingconfig.EngineRedis,
+					MessagePublisher: messagingconfig.MessagePublisher{
+						Redis: &messagingconfig.RedisPublisher{
+							Stream: "test-stream",
+						},
+					},
+				},
+			},
+			Walletregistry: config.WalletRegistry{
+				WalletStorage: storageconfig.Picker{
+					Engine: "invalid",
+				},
+			},
+		}
+
+		_, err := New(t.Context(), cfg)
+		assert.Error(t, err)
+	})
+}
+
+func TestBootstrap_Close(t *testing.T) {
+	redisContainerCfg := setupRedisContainer(t)
+	cfg := config.Config{
+		Engines: config.Engines{
+			Storage: storageconfig.Engines{
+				Redis: &redisContainerCfg,
+			},
+			Messaging: messagingconfig.Engines{
+				Redis: &messagingconfig.RedisConnection{
+					Address: redisContainerCfg.Address,
+				},
+			},
+		},
+		Chainstream: config.ChainStream{
+			CheckpointStorage: &storageconfig.Picker{
+				Engine: storageconfig.EngineRedis,
+			},
+		},
+		Walletwatch: config.WalletWatch{
+			WalletStorage: storageconfig.Picker{
+				Engine: storageconfig.EngineRedis,
+			},
+			TransactionNotifier: messagingconfig.Picker{
+				Engine: messagingconfig.EngineRedis,
+				MessagePublisher: messagingconfig.MessagePublisher{
+					Redis: &messagingconfig.RedisPublisher{
+						Stream: "test-stream",
+					},
+				},
+			},
+		},
+		Walletregistry: config.WalletRegistry{
+			WalletStorage: storageconfig.Picker{
+				Engine: storageconfig.EngineRedis,
+			},
+		},
+	}
+
+	b, err := New(t.Context(), cfg)
+	require.NoError(t, err)
+
+	err = b.Close()
+	assert.NoError(t, err)
 }

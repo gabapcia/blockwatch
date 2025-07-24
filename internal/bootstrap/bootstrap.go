@@ -59,12 +59,10 @@ func New(ctx context.Context, config config.Config) (*bootstrap, error) {
 	if err := storage.Init(ctx, config.Engines.Storage); err != nil {
 		return nil, err
 	}
-	defer storage.Close()
 
 	if err := messaging.Init(ctx, config.Engines.Messaging); err != nil {
 		return nil, err
 	}
-	defer messaging.Close()
 
 	chainstream, err := setupChainStream(ctx, config.Chainstream)
 	if err != nil {
@@ -220,5 +218,5 @@ func setupChainStream(ctx context.Context, config config.ChainStream) (chainstre
 		opts = append(opts, chainstream.WithDispatchFailureNotifier(dispatchFailureNotifier))
 	}
 
-	return chainstream.New(nil, opts...), nil
+	return chainstream.New(networks, opts...), nil
 }
