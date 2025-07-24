@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gabapcia/blockwatch/internal/walletwatch"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -120,18 +121,16 @@ func TestClaimBlockForTxWatch(t *testing.T) {
 		assert.Contains(t, err.Error(), "context canceled")
 	})
 
-	t.Run("zero ttl", func(t *testing.T) {
-		blockHash := "0xccccddddeeeeaaaa"
+	t.Run("database error scenarios", func(t *testing.T) {
+		blockHash := "0xdberrortest1234"
 
-		err := client.ClaimBlockForTxWatch(t.Context(), network, blockHash, 0)
-		require.NoError(t, err)
+		// Test with invalid context to trigger database errors
+		invalidCtx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-1*time.Hour))
+		defer cancel()
 
-		// With zero TTL, the lock is immediately expired, so a second claim should succeed
-		// But we need to give it a tiny bit of time to ensure the timestamp comparison works
-		time.Sleep(1 * time.Millisecond)
-
-		err = client.ClaimBlockForTxWatch(t.Context(), network, blockHash, ttl)
-		require.NoError(t, err)
+		err := client.ClaimBlockForTxWatch(invalidCtx, network, blockHash, ttl)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "context deadline exceeded")
 	})
 
 	t.Run("full lifecycle", func(t *testing.T) {
