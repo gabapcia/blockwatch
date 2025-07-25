@@ -725,6 +725,7 @@ func TestConfig_Config(t *testing.T) {
 
 		// ChainStream required fields
 		t.Setenv("CHAINSTREAM_NETWORKS_ETHEREUM_PROVIDER_ENDPOINT", "https://eth.example.com")
+		t.Setenv("CHAINSTREAM_NETWORKS_SOLANA_PROVIDER_ENDPOINT", "https://api.mainnet-beta.solana.com")
 
 		// Engine configurations
 		t.Setenv("ENGINES_STORAGE_REDIS_ADDRESS", "localhost:6379")
@@ -783,6 +784,7 @@ func TestConfig_Config(t *testing.T) {
 
 		// ChainStream required fields
 		t.Setenv("CHAINSTREAM_NETWORKS_ETHEREUM_PROVIDER_ENDPOINT", "https://eth.example.com")
+		t.Setenv("CHAINSTREAM_NETWORKS_SOLANA_PROVIDER_ENDPOINT", "https://api.mainnet-beta.solana.com")
 
 		ctx := t.Context()
 		config, err := Load(ctx)
@@ -935,6 +937,7 @@ func TestConfig_Config(t *testing.T) {
 		t.Setenv("WALLETWATCH_TRANSACTION_NOTIFIER_RABBITMQ_ROUTING_KEY", "wallet.transactions")
 		t.Setenv("WALLETWATCH_MAX_PROCESSING_TIME", "45s")
 		t.Setenv("CHAINSTREAM_NETWORKS_ETHEREUM_PROVIDER_ENDPOINT", "https://eth.example.com")
+		t.Setenv("CHAINSTREAM_NETWORKS_SOLANA_PROVIDER_ENDPOINT", "https://api.mainnet-beta.solana.com")
 
 		ctx := t.Context()
 		config, err := Load(ctx)
@@ -980,6 +983,7 @@ func TestConfig_Config(t *testing.T) {
 
 		// ChainStream
 		t.Setenv("CHAINSTREAM_NETWORKS_ETHEREUM_PROVIDER_ENDPOINT", "https://eth.example.com")
+		t.Setenv("CHAINSTREAM_NETWORKS_SOLANA_PROVIDER_ENDPOINT", "https://api.mainnet-beta.solana.com")
 
 		ctx := t.Context()
 		config, err := Load(ctx)
@@ -1020,6 +1024,7 @@ func TestConfig_Config(t *testing.T) {
 				t.Setenv("WALLETWATCH_TRANSACTION_NOTIFIER_REDIS_ADDRESS", "localhost:6379")
 				t.Setenv("WALLETWATCH_TRANSACTION_NOTIFIER_REDIS_STREAM", "wallet-events")
 				t.Setenv("CHAINSTREAM_NETWORKS_ETHEREUM_PROVIDER_ENDPOINT", "https://eth.example.com")
+				t.Setenv("CHAINSTREAM_NETWORKS_SOLANA_PROVIDER_ENDPOINT", "https://api.mainnet-beta.solana.com")
 
 				ctx := t.Context()
 				config, err := Load(ctx)
@@ -1115,6 +1120,7 @@ func TestConfig_Config(t *testing.T) {
 		t.Setenv("WALLETWATCH_TRANSACTION_NOTIFIER_RABBITMQ_ROUTING_KEY", "wallet.transactions")
 		t.Setenv("WALLETWATCH_IDEMPOTENCY_GUARD_ENGINE", "REDIS")
 		t.Setenv("CHAINSTREAM_NETWORKS_ETHEREUM_PROVIDER_ENDPOINT", "https://eth.example.com")
+		t.Setenv("CHAINSTREAM_NETWORKS_SOLANA_PROVIDER_ENDPOINT", "https://api.mainnet-beta.solana.com")
 		t.Setenv("CHAINSTREAM_CHECKPOINT_STORAGE_ENGINE", "POSTGRESQL")
 		t.Setenv("CHAINSTREAM_DISPATCH_FAILURE_NOTIFIER_ENGINE", "REDIS")
 		t.Setenv("CHAINSTREAM_DISPATCH_FAILURE_NOTIFIER_REDIS_STREAM", "failures")
@@ -1171,6 +1177,7 @@ func TestConfig_Config(t *testing.T) {
 		t.Setenv("WALLETWATCH_TRANSACTION_NOTIFIER_ENGINE", "REDIS")
 		t.Setenv("WALLETWATCH_TRANSACTION_NOTIFIER_REDIS_STREAM", "wallet-events")
 		t.Setenv("CHAINSTREAM_NETWORKS_ETHEREUM_PROVIDER_ENDPOINT", "https://eth.example.com")
+		t.Setenv("CHAINSTREAM_NETWORKS_SOLANA_PROVIDER_ENDPOINT", "https://api.mainnet-beta.solana.com")
 
 		// Optional pointer pickers
 		t.Setenv("WALLETWATCH_IDEMPOTENCY_GUARD_ENGINE", "REDIS")

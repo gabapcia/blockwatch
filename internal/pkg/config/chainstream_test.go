@@ -12,6 +12,7 @@ func TestConfig_ChainStream(t *testing.T) {
 	t.Run("successful processing and validation with required fields", func(t *testing.T) {
 		// Set up required environment variables
 		t.Setenv("NETWORKS_ETHEREUM_PROVIDER_ENDPOINT", "https://mainnet.infura.io/v3/key")
+		t.Setenv("NETWORKS_SOLANA_PROVIDER_ENDPOINT", "https://api.mainnet-beta.solana.com")
 
 		var chainstream ChainStream
 		ctx := t.Context()
@@ -23,6 +24,8 @@ func TestConfig_ChainStream(t *testing.T) {
 		// Verify values were loaded
 		require.NotNil(t, chainstream.Networks.Ethereum)
 		assert.Equal(t, "https://mainnet.infura.io/v3/key", chainstream.Networks.Ethereum.ProviderEndpoint)
+		require.NotNil(t, chainstream.Networks.Solana)
+		assert.Equal(t, "https://api.mainnet-beta.solana.com", chainstream.Networks.Solana.ProviderEndpoint)
 		// Verify default values for HttpClient
 		assert.Equal(t, 5*time.Second, chainstream.Networks.Ethereum.Timeout)
 		assert.Equal(t, 1*time.Second, chainstream.Networks.Ethereum.RetryWaitMin)
@@ -37,6 +40,7 @@ func TestConfig_ChainStream(t *testing.T) {
 	t.Run("successful processing with optional fields", func(t *testing.T) {
 		// Set up environment variables including optional fields
 		t.Setenv("NETWORKS_ETHEREUM_PROVIDER_ENDPOINT", "https://mainnet.infura.io/v3/key")
+		t.Setenv("NETWORKS_SOLANA_PROVIDER_ENDPOINT", "https://api.mainnet-beta.solana.com")
 		t.Setenv("NETWORKS_ETHEREUM_TIMEOUT", "10s")
 		t.Setenv("CHECKPOINT_STORAGE_ENGINE", "REDIS")
 		t.Setenv("RETRY_ATTEMPTS", "5")
@@ -106,6 +110,7 @@ func TestConfig_ChainStream(t *testing.T) {
 	t.Run("successful processing with custom http client settings", func(t *testing.T) {
 		// Set up environment variables with custom HTTP client settings
 		t.Setenv("NETWORKS_ETHEREUM_PROVIDER_ENDPOINT", "https://mainnet.infura.io/v3/key")
+		t.Setenv("NETWORKS_SOLANA_PROVIDER_ENDPOINT", "https://api.mainnet-beta.solana.com")
 		t.Setenv("NETWORKS_ETHEREUM_TIMEOUT", "30s")
 		t.Setenv("NETWORKS_ETHEREUM_RETRY_WAIT_MIN", "2s")
 		t.Setenv("NETWORKS_ETHEREUM_RETRY_WAIT_MAX", "10s")
@@ -134,6 +139,7 @@ func TestConfig_ChainStream(t *testing.T) {
 	t.Run("successful validation with inline storage config", func(t *testing.T) {
 		// Set up configuration with inline storage config instead of engine reference
 		t.Setenv("NETWORKS_ETHEREUM_PROVIDER_ENDPOINT", "https://eth.example.com")
+		t.Setenv("NETWORKS_SOLANA_PROVIDER_ENDPOINT", "https://api.mainnet-beta.solana.com")
 		t.Setenv("CHECKPOINT_STORAGE_REDIS_ADDRESS", "localhost:6379")
 
 		var chainstream ChainStream
@@ -156,6 +162,7 @@ func TestConfig_ChainStream(t *testing.T) {
 	t.Run("successful validation with inline messaging config", func(t *testing.T) {
 		// Set up configuration with inline messaging config instead of engine reference
 		t.Setenv("NETWORKS_ETHEREUM_PROVIDER_ENDPOINT", "https://eth.example.com")
+		t.Setenv("NETWORKS_SOLANA_PROVIDER_ENDPOINT", "https://api.mainnet-beta.solana.com")
 		t.Setenv("DISPATCH_FAILURE_NOTIFIER_REDIS_ADDRESS", "localhost:6379")
 		t.Setenv("DISPATCH_FAILURE_NOTIFIER_REDIS_STREAM", "failures")
 
