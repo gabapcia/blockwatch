@@ -9,6 +9,7 @@ import (
 	"github.com/gabapcia/blockwatch/internal/bootstrap/storage"
 	"github.com/gabapcia/blockwatch/internal/chainstream"
 	"github.com/gabapcia/blockwatch/internal/infra/blockchain/ethereum"
+	"github.com/gabapcia/blockwatch/internal/infra/blockchain/solana"
 	"github.com/gabapcia/blockwatch/internal/pkg/config"
 	blockchainconfig "github.com/gabapcia/blockwatch/internal/pkg/config/blockchain"
 	pkgconfig "github.com/gabapcia/blockwatch/internal/pkg/config/pkg"
@@ -186,6 +187,11 @@ func setupChainStream(ctx context.Context, config config.ChainStream) (chainstre
 	if ethereumCfg := config.Networks.Ethereum; ethereumCfg != nil {
 		jsonrpcClient := buildJsonrpcClient(*ethereumCfg)
 		networks[blockchainconfig.ProviderEthereum] = ethereum.NewClient(jsonrpcClient)
+	}
+
+	if solanaCfg := config.Networks.Solana; solanaCfg != nil {
+		jsonrpcClient := buildJsonrpcClient(*solanaCfg)
+		networks[blockchainconfig.ProviderSolana] = solana.NewClient(jsonrpcClient)
 	}
 
 	opts := make([]chainstream.Option, 0)

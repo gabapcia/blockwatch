@@ -60,6 +60,9 @@ func TestSetupChainStream(t *testing.T) {
 				Ethereum: &pkgconfig.JsonRPC{
 					ProviderEndpoint: "http://localhost:8545",
 				},
+				Solana: &pkgconfig.JsonRPC{
+					ProviderEndpoint: "http://localhost:8899",
+				},
 			},
 			Retry: &pkgconfig.Retry{
 				Attempts: 5,
