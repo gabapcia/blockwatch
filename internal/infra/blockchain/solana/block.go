@@ -106,7 +106,7 @@ func (t transaction) toStreamTransactions() []chainstream.Transaction {
 	transactionHash := t.Transaction.Signatures[0]
 
 	for _, instruction := range t.Transaction.Message.Instructions {
-		if instruction.Parsed != nil && instruction.Parsed.Type != "transfer" {
+		if instruction.Parsed == nil || instruction.Parsed.Type != "transfer" {
 			continue
 		}
 
